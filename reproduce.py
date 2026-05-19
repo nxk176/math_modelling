@@ -94,7 +94,7 @@ def headway_bifurcation(out_data: Path, out_fig: Path, gammas: tuple[float, ...]
                 title=f"({case_id}) {label}",
                 xlabel="Loading parameter Gamma",
                 ylabel="H1(m)",
-                series=(Series("", tuple(points), "#000000", "points", radius=0.65, marker="square"),),
+                series=(Series("", tuple(points), "#000000", "points", radius=0.65, marker="square", stride=2),),
                 xlim=GAMMA_FULL_FRAME,
                 ylim=(0.0, 6.0),
                 xticks=GAMMA_FULL_TICKS,
@@ -106,7 +106,7 @@ def headway_bifurcation(out_data: Path, out_fig: Path, gammas: tuple[float, ...]
                 title=f"({case_id}) {label}",
                 xlabel="Loading parameter Gamma",
                 ylabel="H1(m)",
-                series=(Series("", tuple(zoom_points), "#000000", "points", radius=0.9, marker="square"),),
+                series=(Series("", tuple(zoom_points), "#000000", "points", radius=0.9, marker="square", stride=2),),
                 xlim=GAMMA_ZOOM_FRAME,
                 ylim=(0.0, 1.5),
                 xticks=GAMMA_ZOOM_TICKS,
@@ -142,12 +142,12 @@ def tour_time_bifurcation(out_data: Path, out_fig: Path, gammas: tuple[float, ..
     )
 
     panels = [
-        Panel("(a) Bus 1", "Loading parameter Gamma", "Delta T1(m)", (Series("", tuple(bus_points[0]), "#000000", "points", radius=0.65, marker="square"),), xlim=GAMMA_FULL_FRAME, ylim=(0, 6.0), xticks=GAMMA_FULL_TICKS, yticks=HEADWAY_FULL_TICKS),
-        Panel("(b) Bus 2", "Loading parameter Gamma", "Delta T2(m)", (Series("", tuple(bus_points[1]), "#000000", "points", radius=0.65, marker="square"),), xlim=GAMMA_FULL_FRAME, ylim=(0, 6.0), xticks=GAMMA_FULL_TICKS, yticks=HEADWAY_FULL_TICKS),
+        Panel("(a) Bus 1", "Loading parameter Gamma", "Delta T1(m)", (Series("", tuple(bus_points[0]), "#000000", "points", radius=0.65, marker="square", stride=2),), xlim=GAMMA_FULL_FRAME, ylim=(0, 6.0), xticks=GAMMA_FULL_TICKS, yticks=HEADWAY_FULL_TICKS),
+        Panel("(b) Bus 2", "Loading parameter Gamma", "Delta T2(m)", (Series("", tuple(bus_points[1]), "#000000", "points", radius=0.65, marker="square", stride=2),), xlim=GAMMA_FULL_FRAME, ylim=(0, 6.0), xticks=GAMMA_FULL_TICKS, yticks=HEADWAY_FULL_TICKS),
     ]
     zoom_panels = [
-        Panel("(a) Bus 1", "Loading parameter Gamma", "Delta T1(m)", (Series("", tuple(bus_zoom_points[0]), "#000000", "points", radius=0.9, marker="square"),), xlim=GAMMA_ZOOM_FRAME, ylim=(0.75, 1.5), xticks=GAMMA_ZOOM_TICKS, yticks=TOUR_ZOOM_TICKS),
-        Panel("(b) Bus 2", "Loading parameter Gamma", "Delta T2(m)", (Series("", tuple(bus_zoom_points[1]), "#000000", "points", radius=0.9, marker="square"),), xlim=GAMMA_ZOOM_FRAME, ylim=(0.75, 1.5), xticks=GAMMA_ZOOM_TICKS, yticks=TOUR_ZOOM_TICKS),
+        Panel("(a) Bus 1", "Loading parameter Gamma", "Delta T1(m)", (Series("", tuple(bus_zoom_points[0]), "#000000", "points", radius=0.9, marker="square", stride=2),), xlim=GAMMA_ZOOM_FRAME, ylim=(0.75, 1.5), xticks=GAMMA_ZOOM_TICKS, yticks=TOUR_ZOOM_TICKS),
+        Panel("(b) Bus 2", "Loading parameter Gamma", "Delta T2(m)", (Series("", tuple(bus_zoom_points[1]), "#000000", "points", radius=0.9, marker="square", stride=2),), xlim=GAMMA_ZOOM_FRAME, ylim=(0.75, 1.5), xticks=GAMMA_ZOOM_TICKS, yticks=TOUR_ZOOM_TICKS),
     ]
     save_svg_grid(out_fig / "fig4_tour_times.svg", panels, columns=2, title="Fig. 4 reproduction: tour times, S1=0.5, S2=0.2")
     save_svg_grid(out_fig / "fig5_tour_times_zoom.svg", zoom_panels, columns=2, title="Fig. 5 reproduction: enlargement 0 < Gamma < 0.5")
@@ -176,7 +176,7 @@ def return_maps(out_data: Path, out_fig: Path) -> None:
                 "H1(m+1)",
                 (
                     Series("", ((0.0, 0.0), (1.5, 1.5)), "#777777", "line", stroke_width=1.1),
-                    Series("", tuple(points), "#000000", "points", radius=1.25, marker="square"),
+                    Series("", tuple(points), "#000000", "points", radius=1.25, marker="square", stride=2),
                 ),
                 xlim=(0.0, 1.5),
                 ylim=(0.0, 1.5),

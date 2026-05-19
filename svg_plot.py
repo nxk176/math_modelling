@@ -23,6 +23,7 @@ class Series:
     stroke_width: float = 1.4
     opacity: float = 1.0
     marker: str = "circle"  # circle, square
+    stride: int = 1
 
 
 @dataclass(frozen=True)
@@ -109,10 +110,11 @@ def _bounds(panel: Panel) -> tuple[tuple[float, float], tuple[float, float]]:
     return xlim, ylim
 
 
-def _point_path(points: Sequence[Point], sx, sy, radius: float, marker: str) -> str:
+def _point_path(points: Sequence[Point], sx, sy, radius: float, marker: str, stride: int) -> str:
     r = radius
     chunks = []
-    for x, y in points:
+    step = max(1, stride)
+    for x, y in points[::step]:
         if math.isfinite(x) and math.isfinite(y):
             px = sx(x)
             py = sy(y)
@@ -246,7 +248,7 @@ def save_svg_grid(
                         f'<polyline points="{line}" fill="none" stroke="{series.color}" stroke-width="{series.stroke_width:.2f}" stroke-linejoin="round" stroke-linecap="round"><title>{escaped_label}</title></polyline>'
                     )
             if series.mode in ("points", "both"):
-                path_data = _point_path(series.points, sx, sy, series.radius, series.marker)
+                path_data = _point_path(series.points, sx, sy, series.radius, series.marker, series.stride)
                 parts.append(f'<path d="{path_data}" fill="{series.color}" opacity="{series.opacity:.3f}"><title>{escaped_label}</title></path>')
         parts.append("</g>")
 
