@@ -24,6 +24,11 @@ def main() -> int:
     estimated = estimate_equal_speed_transition(0.2, iterations=26)
     assert_close(estimated, 1.0 / 6.0, 2.0e-4, "simulated transition S=0.2")
 
+    # Regression check for Fig. 8: the transition estimator must find the first
+    # loss of regularity, not a later regular window at larger Gamma.
+    estimated_high_speed = estimate_equal_speed_transition(1.2, iterations=26)
+    assert_close(estimated_high_speed, 1.2 / 2.2, 2.0e-4, "simulated transition S=1.2")
+
     regular = simulate(0.1, (0.5, 0.2), trips=1001)
     regular_sample = inclusive_window(regular.headways[0], 900, 1000)
     if rms_variation(regular_sample) > 1.0e-7:

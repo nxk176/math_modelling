@@ -225,12 +225,18 @@ def estimate_equal_speed_transition(
     gamma_low: float = 0.0,
     gamma_high: float = 2.0,
     iterations: int = 32,
+    scan_steps: int = 800,
     trips: int = 1300,
     sample_start: int = 900,
     sample_stop: int = 1000,
     regular_tol: float = 2.0e-3,
 ) -> float:
-    """Binary-search the first Gamma where equal-speed buses stop being regular."""
+    """Estimate the first Gamma where equal-speed buses stop being regular."""
+
+    if scan_steps < 1:
+        raise ValueError("scan_steps must be at least 1")
+    if speed == 0.0:
+        return gamma_low
 
     def is_regular(gamma: float) -> bool:
         result = simulate(gamma, (speed, speed), trips=trips)
@@ -238,10 +244,21 @@ def estimate_equal_speed_transition(
         return (not result.diverged) and rms_variation(sample) <= regular_tol
 
     lo = gamma_low
-    hi = gamma_high
     if not is_regular(lo):
         return lo
-    if is_regular(hi):
+
+    step = (gamma_high - gamma_low) / scan_steps
+    prev_gamma = gamma_low
+    hi = math.nan
+    for idx in range(1, scan_steps + 1):
+        gamma = gamma_low + idx * step
+        if not is_regular(gamma):
+            lo = prev_gamma
+            hi = gamma
+            break
+        prev_gamma = gamma
+
+    if hi != hi:
         return math.nan
 
     for _ in range(iterations):
