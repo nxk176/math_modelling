@@ -31,30 +31,31 @@ All code uses only the Python standard library. No `numpy`, `pandas`,
 
 ## Model
 
-For bus `i` at trip `m`, let `T_i(m)` be the arrival time at the origin. The
-headway `H_i(m)` is the time gap between this arrival and the previous bus
+For bus $i$ at trip $m$, let $T_i(m)$ be the arrival time at the origin. The
+headway $H_i(m)$ is the time gap between this arrival and the previous bus
 arrival at the origin:
 
-```text
-H_i(m) = T_i(m) - T_i'(m')
-```
+$$
+H_i(m) = T_i(m) - T_{i'}(m')
+$$
 
-Here `i'` and `m'` refer to the bus and trip index of the immediately preceding
+Here $i'$ and $m'$ refer to the bus and trip index of the immediately preceding
 arrival event.
 
 The dimensionless map implemented here is:
 
-```text
-T_i(m+1) = T_i(m) + Gamma * H_i(m) + 1 / (1 + S_i * H_i(m))
-```
+$$
+T_i(m+1) = T_i(m) + \Gamma H_i(m)
+           + \frac{1}{1 + S_i H_i(m)}
+$$
 
 where:
 
-- `Gamma` is the loading parameter.
-- `S_i` is the speedup parameter of bus `i`.
-- `Gamma * H_i(m)` is the loading/unloading delay term.
-- `1 / (1 + S_i * H_i(m))` is the moving-time term under speedup control.
-- `Delta T_i(m) = T_i(m+1) - T_i(m)` is the tour time.
+- $\Gamma$ is the loading parameter.
+- $S_i$ is the speedup parameter of bus $i$.
+- $\Gamma H_i(m)$ is the loading/unloading delay term.
+- $\frac{1}{1 + S_i H_i(m)}$ is the moving-time term under speedup control.
+- $\Delta T_i(m) = T_i(m+1) - T_i(m)$ is the tour time.
 
 The simulator is event-driven. At each step, the next bus arrival at the origin
 is popped from a priority queue, its headway is computed against the previous
@@ -99,17 +100,17 @@ python reproduce.py
 The first command checks the implementation. The second command regenerates all
 CSV and SVG outputs.
 
-The default reproduction uses `1001` Gamma samples in `[0, 2]`, then filters
+The default reproduction uses `1001` $\Gamma$ samples in $[0, 2]$, then filters
 the data according to the open intervals used in the paper, for example:
 
-- full bifurcation sweeps: `0 < Gamma < 2`,
-- zoomed figures: `0 < Gamma < 0.5`.
+- full bifurcation sweeps: $0 < \Gamma < 2$,
+- zoomed figures: $0 < \Gamma < 0.5$.
 
 The plot frames are separate from the simulation constraints. For example, a
 figure may show an axis frame slightly beyond the last tick, while the data
 still obeys the strict open interval specified in the paper.
 
-To use a different Gamma resolution:
+To use a different $\Gamma$ resolution:
 
 ```powershell
 python reproduce.py --gamma-count 1501
@@ -121,30 +122,30 @@ Running `python reproduce.py` creates:
 
 - `outputs/figures/fig2_headway_bifurcation.svg`
   - Reproduction of Fig. 2.
-  - Plots `H1(m)` versus `Gamma` for trips `m=900..1000`.
+  - Plots $H_1(m)$ versus $\Gamma$ for trips $m=900,\ldots,1000$.
   - Cases:
-    - `S1=S2=0`
-    - `S1=S2=0.2`
-    - `S1=0.3, S2=0.2`
-    - `S1=0.5, S2=0.2`
+    - $S_1=S_2=0$
+    - $S_1=S_2=0.2$
+    - $S_1=0.3,\ S_2=0.2$
+    - $S_1=0.5,\ S_2=0.2$
 
 - `outputs/figures/fig3_headway_bifurcation_zoom.svg`
   - Reproduction of Fig. 3.
-  - Zoom of Fig. 2 for `0 < Gamma < 0.5`.
+  - Zoom of Fig. 2 for $0 < \Gamma < 0.5$.
 
 - `outputs/figures/fig4_tour_times.svg`
   - Reproduction of Fig. 4.
-  - Plots tour times `Delta T1(m)` and `Delta T2(m)` for
-    `S1=0.5, S2=0.2`.
+  - Plots tour times $\Delta T_1(m)$ and $\Delta T_2(m)$ for
+    $S_1=0.5,\ S_2=0.2$.
 
 - `outputs/figures/fig5_tour_times_zoom.svg`
   - Reproduction of Fig. 5.
-  - Zoom of Fig. 4 for `0 < Gamma < 0.5`.
+  - Zoom of Fig. 4 for $0 < \Gamma < 0.5$.
 
 - `outputs/figures/fig6_return_maps.svg`
   - Reproduction of Fig. 6.
-  - Return maps `H1(m+1)` versus `H1(m)`.
-  - Uses `Gamma = 0.2, 0.3, 0.5, 0.8`.
+  - Return maps $H_1(m+1)$ versus $H_1(m)$.
+  - Uses $\Gamma = 0.2,\ 0.3,\ 0.5,\ 0.8$.
 
 - `outputs/figures/fig7_mean_rms.svg`
   - Reproduction of Fig. 7.
@@ -152,7 +153,7 @@ Running `python reproduce.py` creates:
 
 - `outputs/figures/fig8_phase_diagram.svg`
   - Reproduction of Fig. 8.
-  - Transition curve for equal speedup parameters `S1=S2`.
+  - Transition curve for equal speedup parameters $S_1=S_2$.
 
 ## Generated Data
 
@@ -189,14 +190,13 @@ regenerates the same data up to normal floating-point formatting.
 
 The default two-bus initial condition is:
 
-```text
-T1(0) = 0
-T2(0) = 0.5
-```
+$$
+T_1(0) = 0,\qquad T_2(0) = 0.5
+$$
 
 The paper does not fully specify initial conditions. Long transients are
-discarded by sampling later trip ranges such as `m=900..1000` and
-`m=1000..2000`, following the figure captions.
+discarded by sampling later trip ranges such as $m=900,\ldots,1000$ and
+$m=1000,\ldots,2000$, following the figure captions.
 
 ## Validation
 
@@ -208,11 +208,11 @@ python validate.py
 
 The validation script checks several key properties:
 
-- the equal-speedup transition formula gives `Gamma = 1/6 ~= 0.167` for
-  `S=0.2`,
-- `Gamma=0.1` remains regular for `S1=0.5, S2=0.2`,
-- `Gamma=0.2` shows fluctuation after the first transition,
-- `Gamma > 2` diverges in the no-speedup case.
+- the equal-speedup transition formula gives
+  $\Gamma = \frac{1}{6} \approx 0.167$ for $S=0.2$,
+- $\Gamma=0.1$ remains regular for $S_1=0.5,\ S_2=0.2$,
+- $\Gamma=0.2$ shows fluctuation after the first transition,
+- $\Gamma > 2$ diverges in the no-speedup case.
 
 If the checks pass, the script prints:
 
