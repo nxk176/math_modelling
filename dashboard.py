@@ -279,4 +279,4 @@ def update_graphs(s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5500)
