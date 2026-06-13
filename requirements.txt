@@ -2,3 +2,5 @@
 # Python 3.10+ standard library is enough.
 dash
 plotly
+dash_bootstrap_components
+numpy
