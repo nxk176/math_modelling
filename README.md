@@ -24,10 +24,13 @@ This project implements:
 - an event-driven simulator for freely passing buses,
 - regenerated data for Fig. 2 through Fig. 8,
 - SVG plots generated without third-party plotting libraries,
-- validation checks for the main transition points reported in the paper.
+- validation checks for the main transition points reported in the paper,
+- optional Dash/Plotly dashboards for interactive parameter exploration.
 
-All code uses only the Python standard library. No `numpy`, `pandas`,
-`matplotlib`, or `scipy` dependency is required.
+The core reproduction scripts use only the Python standard library. No
+`numpy`, `pandas`, `matplotlib`, or `scipy` dependency is required for
+`validate.py` or `reproduce.py`. The optional dashboards require the packages
+listed in `requirements.txt`.
 
 ## Model
 
@@ -72,6 +75,8 @@ assumption that buses may pass each other freely.
 |-- shuttle_bus.py
 |-- svg_plot.py
 |-- validate.py
+|-- dashboard.py
+|-- dashboard_v2.py
 `-- outputs/
     |-- data/
     |-- figures/
@@ -84,6 +89,8 @@ File roles:
 - `reproduce.py`: regenerates CSV data and SVG figures.
 - `svg_plot.py`: lightweight SVG plotting utilities.
 - `validate.py`: smoke tests for the numerical implementation.
+- `dashboard.py`: optional Dash/Plotly dashboard.
+- `dashboard_v2.py`: optional enhanced Dash/Plotly dashboard.
 - `outputs/data/`: regenerated CSV data.
 - `outputs/figures/`: regenerated SVG figures.
 - `outputs/summary.md`: short generated output summary.
@@ -114,6 +121,27 @@ To use a different $\Gamma$ resolution:
 
 ```powershell
 python reproduce.py --gamma-count 1501
+```
+
+## Optional Dashboard
+
+The dashboard is not required to reproduce the paper figures. It is provided as
+an interactive viewer for changing $\Gamma$, $S_1$, and $S_2$ and inspecting
+the corresponding headway, tour-time, return-map, mean/RMS, and phase-diagram
+views.
+
+Install the dashboard dependencies only if you want to run the interactive app:
+
+```powershell
+pip install -r requirements.txt
+python dashboard_v2.py
+```
+
+The original static reproduction remains:
+
+```powershell
+python validate.py
+python reproduce.py
 ```
 
 ## Generated Figures

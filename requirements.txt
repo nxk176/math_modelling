@@ -1,5 +1,5 @@
-# No third-party dependencies.
-# Python 3.10+ standard library is enough.
+# Optional dashboard dependencies.
+# Core reproduction scripts use only the Python 3.10+ standard library.
 dash
 plotly
 dash_bootstrap_components
