@@ -4,7 +4,6 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import numpy as np
 import csv
-import heapq
 
 import shuttle_bus
 
@@ -97,9 +96,9 @@ content = html.Div(
                 ], className="p-3 border border-top-0 bg-white"),
 
                 dbc.Tab(label="5. Live Animation", tab_id="tab-5", children=[
-                    html.P("Buses shuttling between Origin (Left) and Destination (Right). Wait times depend entirely on the exact mathematical map (Eq.5), causing realistic bus bunching/chaos.", className="mt-3 text-center text-muted"),
+                    html.P("Buses moving on a circular route. The bus with the higher Speed (S) acts as the pursuer during bunching events.", className="mt-3 text-center text-muted"),
                     dbc.Row([dbc.Col(dcc.Graph(id='fig6-animation', style={'height': '700px'}), width={'size': 10, 'offset': 1})])
-                ], className="p-3 border border-top-0 bg-white")
+                ], className="p-3 border border-top-0 bg-white"),
                 
             ], id="tabs", active_tab="tab-2")
         ])
@@ -109,149 +108,79 @@ content = html.Div(
 
 app.layout = dbc.Container([dbc.Row([dbc.Col(sidebar, width=3, className="p-0"), dbc.Col(content, width=9, className="p-0")], className="m-0")], fluid=True, className="p-0")
 
-
-
 # ==========================================
-# 3. ANIMATION FUNCTION (UPDATED)
+# 3. ANIMATION FUNCTION
 # ==========================================
 def build_animation_figure(diverged, gamma, s1, s2):
-    """
-    Simulates the exact discrete nonlinear map from the research paper (Eq. 5)
-    and interpolates positions to create a continuous Plotly animation.
-    """
-    # 1. Discrete Event Simulation strictly based on the paper's math
-    queue = []
-    # Initial staggered arrivals: Bus 1 at t=0.0, Bus 2 at t=0.5
-    heapq.heappush(queue, (0.0, 'arrive_origin', 1))
-    heapq.heappush(queue, (0.5, 'arrive_origin', 2))
-    
-    segments_1 = []
-    segments_2 = [(0.0, 0.5, np.pi, np.pi)] # Bus 2 waits at origin until t=0.5
-    
-    last_arrival_time = -0.5 # Set so that H_1 = 0 - (-0.5) = 0.5 initially
-    t_max_sim = 15.0 # Total dimensionless time to simulate
-    
-    while queue:
-        t, event, bus_id = heapq.heappop(queue)
-        if t > t_max_sim + 2.0:
-            break
-            
-        if event == 'arrive_origin':
-            H = t - last_arrival_time # Headway: Time since previous bus arrived
-            if H < 0.0001: H = 0.0001 # Prevent division by zero when bunched
-            last_arrival_time = t
-            
-            S = s1 if bus_id == 1 else s2
-            
-            # Equations from the paper: Delay depends on Gamma, Speedup on S
-            delay_total = gamma * H
-            travel_total = 1.0 / (1.0 + S * H)
-            
-            # Split delay and travel symmetrically between Go and Return phases
-            delay_half = delay_total / 2.0
-            travel_half = travel_total / 2.0
-            
-            # Calculate absolute timeline points for this specific round trip
-            t1 = t
-            t2 = t1 + delay_half             # Finish boarding at Origin
-            t3 = t2 + travel_half            # Arrive at Destination
-            t4 = t3 + delay_half             # Finish alighting at Destination
-            t5 = t4 + travel_half            # Return to Origin
-            
-            # Record trajectory segments: (start_t, end_t, start_theta, end_theta)
-            # Origin is at PI, Destination is at 0
-            segs = segments_1 if bus_id == 1 else segments_2
-            segs.append((t1, t2, np.pi, np.pi))     # Boarding delay (Stationary)
-            segs.append((t2, t3, np.pi, 0.0))       # Top curve (Go phase)
-            segs.append((t3, t4, 0.0, 0.0))         # Alighting delay (Stationary)
-            segs.append((t4, t5, 0.0, -np.pi))      # Bottom curve (Return phase)
-            
-            heapq.heappush(queue, (t5, 'arrive_origin', bus_id))
+    num_frames = 250
+    theta_track = np.linspace(0, 2*np.pi, 100)
+    x_track, y_track = np.cos(theta_track), np.sin(theta_track)
 
-    # 2. Frame Generation (Interpolating continuous positions)
-    fps = 32
-    dt = 1.0 / fps
-    times = np.arange(0, t_max_sim, dt)
-    
-    def get_theta(t, segments):
-        for (st, et, s_th, e_th) in segments:
-            if st <= t <= et:
-                if et == st: return s_th
-                return s_th + (e_th - s_th) * (t - st) / (et - st)
-        if not segments: return np.pi
-        if t < segments[0][0]: return segments[0][2]
-        if t > segments[-1][1]: return segments[-1][3]
-        return np.pi
+    num_stops = 8
+    theta_stops = np.linspace(0, 2*np.pi, num_stops, endpoint=False)
+    x_stops, y_stops = np.cos(theta_stops), np.sin(theta_stops)
 
-    arrival_times = sorted([seg[0] for seg in segments_1 if seg[2] == np.pi and seg[3] == np.pi] + 
-                           [seg[0] for seg in segments_2 if seg[2] == np.pi and seg[3] == np.pi])
-                           
-    def get_pax(t):
-        valid = [a for a in arrival_times if a <= t]
-        last_arr = valid[-1] if valid else -0.5
-        # Assuming 20 pax arrive per dimensionless time unit for visual scaling
-        return int((t - last_arr) * 20) 
-
-    # Track definition
-    theta_track = np.linspace(-np.pi, np.pi, 100)
-    
     fig = go.Figure(
         data=[
-            # The Route Oval
-            go.Scatter(x=np.cos(theta_track), y=np.sin(theta_track), mode='lines', line=dict(color='#bdc3c7', width=3), showlegend=False, hoverinfo='skip'),
-            # Origin and Destination Stops
-            go.Scatter(x=[-1, 1], y=[0, 0], mode='markers', marker=dict(color='#7f8c8d', size=16, symbol='square'), name='Terminals (Origin & Dest)'),
-            # Bus 1
-            go.Scatter(x=[-1], y=[0], mode='markers', marker=dict(color='#1f77b4', size=22, line=dict(width=2, color='white')), name='Bus 1 (Blue)'),
-            # Bus 2 (slightly offset radius to see overlapping/passing)
-            go.Scatter(x=[-1], y=[0], mode='markers', marker=dict(color='#ff7f0e', size=22, line=dict(width=2, color='white')), name='Bus 2 (Orange)'),
-            # Text for Passengers
-            go.Scatter(x=[-1.35, 1.35], y=[0.25, 0.25], mode='text', text=["Origin: 0 pax", "Dest: 0 pax"], textfont=dict(size=14, color='red', weight='bold'), showlegend=False)
+            go.Scatter(x=x_track, y=y_track, mode='lines', line=dict(color='#bdc3c7', width=4), showlegend=False, hoverinfo='skip'),
+            go.Scatter(x=x_stops, y=y_stops, mode='markers', marker=dict(color='#7f8c8d', size=14, symbol='square-open', line=dict(width=2)), name='Bus Stop'),
+            go.Scatter(x=[1], y=[0], mode='markers', marker=dict(color='#1f77b4', size=20, line=dict(width=2, color='white')), name='Bus 1 (Blue)'),
+            go.Scatter(x=[-1], y=[0], mode='markers', marker=dict(color='#ff7f0e', size=20, line=dict(width=2, color='white')), name='Bus 2 (Orange)'),
+            go.Scatter(x=x_stops * 1.15, y=y_stops * 1.15, mode='text', text=["0"]*num_stops, textfont=dict(size=12, color='red'), name='Passengers')
         ]
     )
 
     frames = []
-    # R1 and R2 allow visual passing (Buses won't completely cover each other)
-    R1, R2 = 1.0, 1.08 
+    theta1, theta2 = 0.0, np.pi
+    passengers = np.zeros(num_stops)
+    base_speed = 0.08
     
-    for i, t in enumerate(times):
-        th1 = get_theta(t, segments_1)
-        th2 = get_theta(t, segments_2)
-        pax = get_pax(t)
+    hunter = 1 if s1 > s2 else 2 
+    
+    for i in range(num_frames):
+        passengers += (gamma * 0.5)
         
-        x1, y1 = R1 * np.cos(th1), R1 * np.sin(th1)
-        x2, y2 = R2 * np.cos(th2), R2 * np.sin(th2)
+        at_stop_1 = np.argmin(np.abs(np.angle(np.exp(1j * (theta_stops - theta1)))))
+        at_stop_2 = np.argmin(np.abs(np.angle(np.exp(1j * (theta_stops - theta2)))))
         
-        # Ensure 'diverged' status is clear
-        if diverged and t > t_max_sim * 0.5:
-            p_text = f"Origin: {pax} pax (CHAOS!)"
-        else:
-            p_text = f"Origin: {pax} pax waiting"
+        dist_1 = np.abs(np.angle(np.exp(1j * (theta_stops[at_stop_1] - theta1))))
+        dist_2 = np.abs(np.angle(np.exp(1j * (theta_stops[at_stop_2] - theta2))))
+        
+        speed1, speed2 = base_speed, base_speed
+        
+        if dist_1 < 0.1:
+            delay1 = passengers[at_stop_1] * gamma * 0.05
+            speed1 = max(0.01, base_speed - delay1) + (s1 * 0.015)
+            passengers[at_stop_1] = 0
             
-        frames.append(go.Frame(
-            data=[
-                go.Scatter(x=[x1], y=[y1]), 
-                go.Scatter(x=[x2], y=[y2]), 
-                go.Scatter(text=[p_text, "Destination: Drop-off"])
-            ], 
-            traces=[2, 3, 4], 
-            name=f'frame{i}'
-        ))
+        if dist_2 < 0.1:
+            delay2 = passengers[at_stop_2] * gamma * 0.05
+            speed2 = max(0.01, base_speed - delay2) + (s2 * 0.015)
+            passengers[at_stop_2] = 0
+            
+        if diverged:
+            gap = np.angle(np.exp(1j * (theta1 - theta2))) 
+            
+            if hunter == 2:
+                if gap > 0.1: speed2 += 0.02
+                elif 0 <= gap <= 0.1: speed2 += 0.05 
+            elif hunter == 1:
+                if gap < -0.1: speed1 += 0.02
+                elif -0.1 <= gap <= 0: speed1 += 0.05 
+
+        theta1 += speed1
+        theta2 += speed2
+
+        p_texts = [f"{int(p)} pax" for p in passengers]
+        frames.append(go.Frame(data=[go.Scatter(x=[np.cos(theta1)], y=[np.sin(theta1)]), go.Scatter(x=[np.cos(theta2)], y=[np.sin(theta2)]), go.Scatter(text=p_texts)], traces=[2, 3, 4], name=f'frame{i}'))
 
     fig.frames = frames
-    fig.update_layout(
-        template='plotly_white', 
-        xaxis=dict(range=[-2.0, 2.0], showgrid=False, zeroline=False, visible=False), 
-        yaxis=dict(range=[-1.5, 1.5], showgrid=False, zeroline=False, visible=False, scaleanchor="x", scaleratio=1), 
-        margin=dict(l=20, r=20, t=20, b=20),
+    fig.update_layout(template='plotly_white', xaxis=dict(range=[-1.5, 1.5], showgrid=False, zeroline=False, visible=False), yaxis=dict(range=[-1.5, 1.5], showgrid=False, zeroline=False, visible=False, scaleanchor="x", scaleratio=1), margin=dict(l=40, r=40, t=20, b=20),
         updatemenus=[dict(type="buttons", showactive=False, x=0.5, y=-0.1, xanchor="center", yanchor="top", direction="left",
-            buttons=[
-                dict(label="Play Simulation", method="animate", args=[None, dict(frame=dict(duration=50, redraw=False), fromcurrent=True, transition=dict(duration=0))]),
-                dict(label="Pause", method="animate", args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate", transition=dict(duration=0))])
-            ])]
+            buttons=[dict(label="Play Simulation", method="animate", args=[None, dict(frame=dict(duration=50, redraw=False), fromcurrent=True, transition=dict(duration=0))]),
+                     dict(label="Pause", method="animate", args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate", transition=dict(duration=0))])])]
     )
     return fig
-
 
 # ==========================================
 # 4. MAIN CALLBACK
