@@ -77,6 +77,7 @@ assumption that buses may pass each other freely.
 |-- validate.py
 |-- dashboard.py
 |-- dashboard_v2.py
+|-- dashboard_v2.1.py
 `-- outputs/
     |-- data/
     |-- figures/
@@ -91,13 +92,60 @@ File roles:
 - `validate.py`: smoke tests for the numerical implementation.
 - `dashboard.py`: optional Dash/Plotly dashboard.
 - `dashboard_v2.py`: optional enhanced Dash/Plotly dashboard.
+- `dashboard_v2.1.py`: optional dashboard variant.
 - `outputs/data/`: regenerated CSV data.
 - `outputs/figures/`: regenerated SVG figures.
 - `outputs/summary.md`: short generated output summary.
 
-## How To Run
+## Quick Start From a Fresh Clone
 
-From the repository root:
+The core reproduction does **not** require installing third-party packages.
+Only Python 3.10 or newer is needed.
+
+```powershell
+git clone https://github.com/nxk176/Math_Modelling.git
+cd Math_Modelling
+python --version
+python validate.py
+python reproduce.py
+```
+
+If Windows does not recognize `python`, try:
+
+```powershell
+py -3 --version
+py -3 validate.py
+py -3 reproduce.py
+```
+
+Expected validation output:
+
+```text
+All validation checks passed.
+```
+
+Expected reproduction output:
+
+```text
+Writing results to ...\Math_Modelling\outputs
+Generating Fig. 2 and Fig. 3 data...
+Generating Fig. 4 and Fig. 5 data...
+Generating Fig. 6 return maps...
+Generating Fig. 7 means and RMS...
+Generating Fig. 8 phase diagram...
+Done.
+```
+
+After `python reproduce.py`, the regenerated files should appear in:
+
+- `outputs/data/`
+- `outputs/figures/`
+- `outputs/summary.md`
+
+## Core Commands
+
+From the repository root, the two commands needed for the static reproduction
+are:
 
 ```powershell
 python validate.py
@@ -106,6 +154,10 @@ python reproduce.py
 
 The first command checks the implementation. The second command regenerates all
 CSV and SVG outputs.
+
+The scripts are deterministic. Rerunning the same commands with the same Python
+version and source code overwrites the files in `outputs/` with the same
+numerical results up to normal floating-point text formatting.
 
 The default reproduction uses `1001` $\Gamma$ samples in $[0, 2]$, then filters
 the data according to the open intervals used in the paper, for example:
@@ -136,6 +188,9 @@ Install the dashboard dependencies only if you want to run the interactive app:
 pip install -r requirements.txt
 python dashboard_v2.py
 ```
+
+The packages in `requirements.txt` are for the optional dashboard only. They are
+not required for `validate.py` or `reproduce.py`.
 
 The original static reproduction remains:
 
