@@ -1,121 +1,65 @@
-# Shuttle Bus Chaos Reproduction
+# Math Modelling Project - Shuttle Bus Chaos
 
-This repository reproduces the numerical model and the main figures from:
+This README is a quick run guide for the submitted source code. The report and
+slides explain the mathematical model and the scientific background in detail.
+This file focuses only on how to run the code and what each command produces.
 
-Takashi Nagatani, "Chaos control and schedule of shuttle buses",
-*Physica A: Statistical Mechanics and its Applications*, 371(2), 683-691,
-2006. DOI: `10.1016/j.physa.2006.04.056`.
+## Requirements
 
-The goal is not to digitize the paper figures. The original paper does not
-provide CSV data or supplementary numerical output. Instead, this project
-reimplements the published dimensionless map and regenerates the numerical
-data and SVG figures from that model.
+- Python 3.10 or newer.
+- No third-party package is required for the static reproduction scripts:
+  `validate.py` and `reproduce.py`.
+- The interactive dashboard is optional and requires the packages listed in
+  `requirements.txt`.
 
-## What This Project Does
-
-The paper studies shuttle buses that repeatedly travel between an origin and a
-destination. Passenger loading creates delay, and a speed-control rule reduces
-the travel time when the headway becomes large. The nonlinear feedback between
-loading delay and speedup can produce regular, periodic, and chaotic schedules.
-
-This project implements:
-
-- the shuttle-bus nonlinear map from the paper,
-- an event-driven simulator for freely passing buses,
-- regenerated data for Fig. 2 through Fig. 8,
-- SVG plots generated without third-party plotting libraries,
-- validation checks for the main transition points reported in the paper,
-- optional Dash/Plotly dashboards for interactive parameter exploration.
-
-The core reproduction scripts use only the Python standard library. No
-`numpy`, `pandas`, `matplotlib`, or `scipy` dependency is required for
-`validate.py` or `reproduce.py`. The optional dashboards require the packages
-listed in `requirements.txt`.
-
-## Model
-
-For bus $i$ at trip $m$, let $T_i(m)$ be the arrival time at the origin. The
-headway $H_i(m)$ is the time gap between this arrival and the previous bus
-arrival at the origin:
-
-$$
-H_i(m) = T_i(m) - T_{i'}(m')
-$$
-
-Here $i'$ and $m'$ refer to the bus and trip index of the immediately preceding
-arrival event.
-
-The dimensionless map implemented here is:
-
-$$
-T_i(m+1) = T_i(m) + \Gamma H_i(m)
-           + \frac{1}{1 + S_i H_i(m)}
-$$
-
-where:
-
-- $\Gamma$ is the loading parameter.
-- $S_i$ is the speedup parameter of bus $i$.
-- $\Gamma H_i(m)$ is the loading/unloading delay term.
-- $\frac{1}{1 + S_i H_i(m)}$ is the moving-time term under speedup control.
-- $\Delta T_i(m) = T_i(m+1) - T_i(m)$ is the tour time.
-
-The simulator is event-driven. At each step, the next bus arrival at the origin
-is popped from a priority queue, its headway is computed against the previous
-arrival event, and its next arrival time is scheduled. This matches the paper's
-assumption that buses may pass each other freely.
-
-## Repository Layout
-
-```text
-.
-|-- README.md
-|-- requirements.txt
-|-- reproduce.py
-|-- shuttle_bus.py
-|-- svg_plot.py
-|-- validate.py
-|-- dashboard.py
-|-- dashboard_v2.py
-|-- dashboard_v2.1.py
-`-- outputs/
-    |-- data/
-    |-- figures/
-    `-- summary.md
-```
-
-File roles:
-
-- `shuttle_bus.py`: simulator, statistics, and transition helpers.
-- `reproduce.py`: regenerates CSV data and SVG figures.
-- `svg_plot.py`: lightweight SVG plotting utilities.
-- `validate.py`: smoke tests for the numerical implementation.
-- `dashboard.py`: optional Dash/Plotly dashboard.
-- `dashboard_v2.py`: optional enhanced Dash/Plotly dashboard.
-- `dashboard_v2.1.py`: optional dashboard variant.
-- `outputs/data/`: regenerated CSV data.
-- `outputs/figures/`: regenerated SVG figures.
-- `outputs/summary.md`: short generated output summary.
-
-## Quick Start From a Fresh Clone
-
-The core reproduction does **not** require installing third-party packages.
-Only Python 3.10 or newer is needed.
+Check Python:
 
 ```powershell
-git clone https://github.com/nxk176/Math_Modelling.git
-cd Math_Modelling
 python --version
-python validate.py
-python reproduce.py
 ```
 
-If Windows does not recognize `python`, try:
+If `python` is not recognized on Windows, use:
 
 ```powershell
 py -3 --version
-py -3 validate.py
-py -3 reproduce.py
+```
+
+## Project Files
+
+```text
+Math_Modelling/
+|-- README.md
+|-- requirements.txt
+|-- shuttle_bus.py
+|-- reproduce.py
+|-- svg_plot.py
+|-- validate.py
+|-- dashboard_v2.py
+|-- extension_multibus/
+`-- outputs/
+```
+
+Main files:
+
+- `shuttle_bus.py`: core event-driven simulator for the shuttle-bus nonlinear
+  map.
+- `reproduce.py`: regenerates the static CSV data and SVG figures used by the
+  project.
+- `svg_plot.py`: lightweight SVG plotting helper used by `reproduce.py`.
+- `validate.py`: quick numerical checks to confirm that the implementation is
+  behaving as expected.
+- `dashboard_v2.py`: optional interactive dashboard for exploring parameters.
+- `extension_multibus/run_multibus.py`: optional extension for testing more
+  than two buses while keeping the same two-station shuttle structure.
+- `outputs/`: generated data, figures, and summary files.
+
+## Quick Run
+
+From the `Math_Modelling` folder:
+
+```powershell
+python validate.py
+python reproduce.py
 ```
 
 Expected validation output:
@@ -136,196 +80,168 @@ Generating Fig. 8 phase diagram...
 Done.
 ```
 
-After `python reproduce.py`, the regenerated files should appear in:
+After running `python reproduce.py`, the generated files are saved in:
 
-- `outputs/data/`
-- `outputs/figures/`
-- `outputs/summary.md`
-
-## Core Commands
-
-From the repository root, the two commands needed for the static reproduction
-are:
-
-```powershell
-python validate.py
-python reproduce.py
+```text
+outputs/data/
+outputs/figures/
+outputs/summary.md
 ```
 
-The first command checks the implementation. The second command regenerates all
-CSV and SVG outputs.
+The generated CSV files are simulation outputs produced by the implemented
+model. They are not raw data extracted from the original paper.
 
-The scripts are deterministic. Rerunning the same commands with the same Python
-version and source code overwrites the files in `outputs/` with the same
-numerical results up to normal floating-point text formatting.
+## What The Main Commands Do
 
-The default reproduction uses `1001` $\Gamma$ samples in $[0, 2]$, then filters
-the data according to the open intervals used in the paper, for example:
+### `python validate.py`
 
-- full bifurcation sweeps: $0 < \Gamma < 2$,
-- zoomed figures: $0 < \Gamma < 0.5$.
+Runs quick checks on the numerical implementation. It verifies that:
 
-The plot frames are separate from the simulation constraints. For example, a
-figure may show an axis frame slightly beyond the last tick, while the data
-still obeys the strict open interval specified in the paper.
+- the equal-speed transition formula gives the expected value for `S=0.2`;
+- the simulated transition is close to the expected transition value;
+- a low-loading case stays regular;
+- a higher-loading case shows fluctuation;
+- a no-speedup case diverges when `Gamma > 2`.
 
-To use a different $\Gamma$ resolution:
+This command is useful before presenting or grading because it catches obvious
+implementation mistakes quickly.
+
+### `python reproduce.py`
+
+Runs the full static experiment pipeline. It regenerates:
+
+- headway bifurcation data and figures;
+- tour-time data and figures;
+- return-map data and figures;
+- mean/RMS data and figures;
+- equal-speed phase-transition data and figure.
+
+The script overwrites the generated files in `outputs/`. The simulation is
+deterministic, so rerunning the same source code with the same parameters
+produces the same numerical results up to normal floating-point formatting.
+
+Optional Gamma resolution:
 
 ```powershell
 python reproduce.py --gamma-count 1501
 ```
 
+The default is:
+
+```text
+gamma-count = 1001
+```
+
 ## Optional Dashboard
 
-The dashboard is not required to reproduce the paper figures. It is provided as
-an interactive viewer for changing $\Gamma$, $S_1$, and $S_2$ and inspecting
-the corresponding headway, tour-time, return-map, mean/RMS, and phase-diagram
-views.
+The dashboard is not required to regenerate the static project results. It is
+only an interactive demo for changing parameters and inspecting the behaviour
+of the two-bus model.
 
-Install the dashboard dependencies only if you want to run the interactive app:
+Install dashboard dependencies:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Run dashboard:
+
+```powershell
+python dashboard_v2.py
+```
+
+Then open the local URL printed by Dash, usually:
+
+```text
+http://127.0.0.1:8050/
+```
+
+Use the dashboard to adjust:
+
+- `S1`: speedup parameter of bus 1;
+- `S2`: speedup parameter of bus 2;
+- `Gamma`: passenger loading parameter.
+
+The dashboard shows headway, tour time, return map, mean/RMS curves, phase
+diagram, and a simple animation view.
+
+## Optional Multi-Bus Extension
+
+The main reproduction follows the two-bus experiments. The simulator itself can
+also run more than two buses because the number of buses is determined by the
+length of the speedup tuple.
+
+The extension is placed in:
+
+```text
+extension_multibus/run_multibus.py
+```
+
+This extension keeps the same two-station shuttle setting:
+
+```text
+origin -> destination -> origin
+```
+
+It is an exploratory test, not a replacement for the main reproduction.
+
+Run one four-bus case:
+
+```powershell
+python extension_multibus/run_multibus.py --bus-count 4 --gamma 0.2 --speeds 0.5,0.2,0.3,0.4
+```
+
+Run a four-bus Gamma sweep:
+
+```powershell
+python extension_multibus/run_multibus.py --bus-count 4 --speeds 0.5,0.2,0.3,0.4 --sweep --gamma-count 101
+```
+
+Run five buses with equal speedup:
+
+```powershell
+python extension_multibus/run_multibus.py --bus-count 5 --equal-speed 0.3 --gamma 0.2 --sweep
+```
+
+Extension outputs are written to:
+
+```text
+extension_multibus/outputs/
+```
+
+The extension summary CSV reports, for each bus:
+
+- speedup parameter;
+- initial arrival time;
+- mean headway;
+- RMS headway variation;
+- mean tour time;
+- RMS tour-time variation;
+- qualitative motion label.
+
+## Fresh Clone Checklist
+
+Use this sequence to verify the submitted code from a fresh copy:
+
+```powershell
+cd Math_Modelling
+python --version
+python validate.py
+python reproduce.py
+```
+
+Optional dashboard check:
 
 ```powershell
 pip install -r requirements.txt
 python dashboard_v2.py
 ```
 
-The packages in `requirements.txt` are for the optional dashboard only. They are
-not required for `validate.py` or `reproduce.py`.
-
-The original static reproduction remains:
+Optional multi-bus extension check:
 
 ```powershell
-python validate.py
-python reproduce.py
+python extension_multibus/run_multibus.py --bus-count 4 --gamma 0.2 --speeds 0.5,0.2,0.3,0.4
 ```
 
-## Generated Figures
-
-Running `python reproduce.py` creates:
-
-- `outputs/figures/fig2_headway_bifurcation.svg`
-  - Reproduction of Fig. 2.
-  - Plots $H_1(m)$ versus $\Gamma$ for trips $m=900,\ldots,1000$.
-  - Cases:
-    - $S_1=S_2=0$
-    - $S_1=S_2=0.2$
-    - $S_1=0.3,\ S_2=0.2$
-    - $S_1=0.5,\ S_2=0.2$
-
-- `outputs/figures/fig3_headway_bifurcation_zoom.svg`
-  - Reproduction of Fig. 3.
-  - Zoom of Fig. 2 for $0 < \Gamma < 0.5$.
-
-- `outputs/figures/fig4_tour_times.svg`
-  - Reproduction of Fig. 4.
-  - Plots tour times $\Delta T_1(m)$ and $\Delta T_2(m)$ for
-    $S_1=0.5,\ S_2=0.2$.
-
-- `outputs/figures/fig5_tour_times_zoom.svg`
-  - Reproduction of Fig. 5.
-  - Zoom of Fig. 4 for $0 < \Gamma < 0.5$.
-
-- `outputs/figures/fig6_return_maps.svg`
-  - Reproduction of Fig. 6.
-  - Return maps $H_1(m+1)$ versus $H_1(m)$.
-  - Uses $\Gamma = 0.2,\ 0.3,\ 0.5,\ 0.8$.
-
-- `outputs/figures/fig7_mean_rms.svg`
-  - Reproduction of Fig. 7.
-  - Mean values and RMS variations for headways and tour times.
-
-- `outputs/figures/fig8_phase_diagram.svg`
-  - Reproduction of Fig. 8.
-  - Transition curve for equal speedup parameters $S_1=S_2$.
-
-## Generated Data
-
-The CSV files in `outputs/data/` are regenerated simulation data. They are not
-original data extracted from the paper.
-
-The relationship between CSV files and figures is:
-
-- `fig2_fig3_headway_case_*.csv`
-  - Source data for Fig. 2 and Fig. 3.
-  - Fig. 3 is a zoomed view of the same headway sweep.
-
-- `fig4_fig5_tour_times_s1_0p5_s2_0p2.csv`
-  - Source data for Fig. 4 and Fig. 5.
-  - Fig. 5 is a zoomed view of the same tour-time sweep.
-
-- `fig6_return_map_gamma_*.csv`
-  - Source data for Fig. 6 return maps.
-
-- `fig7_mean_rms_s1_0p5_s2_0p2.csv`
-  - Source data for Fig. 7 mean and RMS plots.
-
-- `fig8_phase_transition_equal_speedup.csv`
-  - Source data for Fig. 8 phase diagram.
-
-Each time `python reproduce.py` is run, these CSV and SVG files are overwritten
-with newly regenerated deterministic outputs.
-
-## Determinism
-
-The simulation is deterministic. It does not use random numbers or random
-seeds. If the code and parameters are unchanged, rerunning `reproduce.py`
-regenerates the same data up to normal floating-point formatting.
-
-The default two-bus initial condition is:
-
-$$
-T_1(0) = 0,\qquad T_2(0) = 0.5
-$$
-
-The paper does not fully specify initial conditions. Long transients are
-discarded by sampling later trip ranges such as $m=900,\ldots,1000$ and
-$m=1000,\ldots,2000$, following the figure captions.
-
-## Validation
-
-Run:
-
-```powershell
-python validate.py
-```
-
-The validation script checks several key properties:
-
-- the equal-speedup transition formula gives
-  $\Gamma = \frac{1}{6} \approx 0.167$ for $S=0.2$,
-- $\Gamma=0.1$ remains regular for $S_1=0.5,\ S_2=0.2$,
-- $\Gamma=0.2$ shows fluctuation after the first transition,
-- $\Gamma > 2$ diverges in the no-speedup case.
-
-If the checks pass, the script prints:
-
-```text
-All validation checks passed.
-```
-
-## Limitations
-
-This is a model reproduction, not a digitization of the original plots.
-
-Important limitations:
-
-- The original paper does not provide raw data.
-- Initial conditions are not fully specified in the paper.
-- Chaotic trajectories are sensitive to initial conditions and numerical
-  details.
-- The SVG renderer is custom and will not look pixel-identical to the original
-  paper's plotting tool.
-
-Therefore, the expected agreement is qualitative and numerical at the level of
-the published model behavior: regular regimes, bifurcation structure, return
-map patterns, transition points, and divergence behavior.
-
-## References Used For Reproduction
-
-- User-provided PDF of the paper.
-- ScienceDirect metadata page:
-  <https://www.sciencedirect.com/science/article/abs/pii/S0378437106004754>
-- Public OCR/preview used only to cross-check equations and captions:
-  <https://www.scribd.com/document/882586440/Chaos-Control-and-Schedule-of-Shuttle-Buses>
-- Independent class-poster reproduction using the same dimensionless map:
-  <https://math.arizona.edu/~gabitov/teaching/101/math_485_585/Posters/ChaosBusShuttle_485.pdf>
+If `validate.py` prints `All validation checks passed` and `reproduce.py`
+finishes with `Done.`, the source code is running correctly.
