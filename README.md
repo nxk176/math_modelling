@@ -50,8 +50,8 @@ Main files:
 - `dashboard_v2.py`: optional interactive dashboard for exploring parameters.
 - `extension_multibus/run_multibus.py`: optional extension for testing more
   than two buses while keeping the same two-station shuttle structure.
-- `outputs/`: generated data, figures, and summary files created by
-  `python reproduce.py`; this directory is intentionally ignored by Git.
+- `outputs/`: generated data and figures created by `python reproduce.py`;
+  this directory is intentionally ignored by Git.
 
 ## Quick Run
 
@@ -85,7 +85,6 @@ After running `python reproduce.py`, the generated files are saved in:
 ```text
 outputs/data/
 outputs/figures/
-outputs/summary.md
 ```
 
 The generated CSV files are simulation outputs produced by the implemented
