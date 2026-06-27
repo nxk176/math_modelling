@@ -35,8 +35,7 @@ Math_Modelling/
 |-- svg_plot.py
 |-- validate.py
 |-- dashboard_v2.py
-|-- extension_multibus/
-`-- outputs/
+`-- extension_multibus/
 ```
 
 Main files:
@@ -51,7 +50,8 @@ Main files:
 - `dashboard_v2.py`: optional interactive dashboard for exploring parameters.
 - `extension_multibus/run_multibus.py`: optional extension for testing more
   than two buses while keeping the same two-station shuttle structure.
-- `outputs/`: generated data, figures, and summary files.
+- `outputs/`: generated data, figures, and summary files created by
+  `python reproduce.py`; this directory is intentionally ignored by Git.
 
 ## Quick Run
 
