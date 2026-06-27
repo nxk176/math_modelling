@@ -12,7 +12,7 @@ Run one four-bus experiment:
     python extension_multibus/run_multibus.py --bus-count 4 --gamma 0.2 \
         --speeds 0.5,0.2,0.3,0.4
 
-Run a Gamma sweep:
+Run a Gamma sweep and generate figures:
 
     python extension_multibus/run_multibus.py --bus-count 4 --speeds 0.5,0.2,0.3,0.4 \
         --sweep --gamma-count 101
@@ -40,6 +40,10 @@ from shuttle_bus import (  # noqa: E402
     simulate,
 )
 from svg_plot import PALETTE, Panel, Series, save_svg_grid  # noqa: E402
+
+
+GAMMA_ZOOM_STOP = 0.5
+RETURN_MAP_GAMMAS = (0.2, 0.3, 0.5, 0.8)
 
 
 def parse_speeds(raw: str | None, bus_count: int, equal_speed: float | None) -> tuple[float, ...]:
@@ -73,6 +77,13 @@ def default_initial_times(bus_count: int) -> tuple[float, ...]:
 
 def format_param(value: float) -> str:
     return f"{value:.4f}".rstrip("0").rstrip(".").replace(".", "p")
+
+
+def case_label(speeds: Sequence[float]) -> str:
+    return "N{}_{}".format(
+        len(speeds),
+        "_".join(f"S{idx + 1}_{format_param(speed)}" for idx, speed in enumerate(speeds)),
+    )
 
 
 def write_csv(path: Path, header: Sequence[str], rows: Iterable[Sequence[object]]) -> None:
@@ -120,6 +131,7 @@ def run_single_case(
 
     bus_count = len(speeds)
     initial_times = default_initial_times(bus_count)
+    data_dir = out_dir / "data"
     result = simulate(
         gamma,
         speeds,
@@ -154,7 +166,7 @@ def run_single_case(
         )
 
     write_csv(
-        out_dir / f"single_summary_{label}.csv",
+        data_dir / f"single_summary_{label}.csv",
         (
             "bus_id",
             "speedup_S",
@@ -186,14 +198,14 @@ def run_single_case(
         for idx, (time, bus, trip, headway, tour) in enumerate(result.events)
     )
     write_csv(
-        out_dir / f"single_events_{label}.csv",
+        data_dir / f"single_events_{label}.csv",
         ("event_index", "arrival_time", "bus_id", "trip_m", "headway", "tour_time"),
         event_rows,
     )
 
-    print(f"Single run written to {out_dir}")
-    print(f"  - single_summary_{label}.csv")
-    print(f"  - single_events_{label}.csv")
+    print(f"Single run written to {data_dir}")
+    print(f"  - data/single_summary_{label}.csv")
+    print(f"  - data/single_events_{label}.csv")
 
 
 def run_gamma_sweep(
@@ -207,15 +219,23 @@ def run_gamma_sweep(
     sample_stop: int,
     out_dir: Path,
 ) -> None:
-    """Sweep Gamma and write per-bus summary statistics plus SVG diagnostics."""
+    """Sweep Gamma and write N-bus CSV data plus SVG diagnostics."""
 
     bus_count = len(speeds)
     initial_times = default_initial_times(bus_count)
+    data_dir = out_dir / "data"
+    figure_dir = out_dir / "figures"
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    label = case_label(speeds)
     rows = []
     mean_headway_points = [[] for _ in range(bus_count)]
     rms_headway_points = [[] for _ in range(bus_count)]
     mean_tour_points = [[] for _ in range(bus_count)]
     rms_tour_points = [[] for _ in range(bus_count)]
+    headway_points = [[] for _ in range(bus_count)]
+    headway_zoom_points = [[] for _ in range(bus_count)]
+    tour_points = [[] for _ in range(bus_count)]
+    tour_zoom_points = [[] for _ in range(bus_count)]
 
     for gamma in gamma_values(gamma_start, gamma_stop, gamma_count):
         result = simulate(
@@ -229,6 +249,14 @@ def run_gamma_sweep(
             dt = sample_window(result.tour_times[bus], sample_start, sample_stop)
             h_mean, h_rms, h_min, h_max, motion = summarize_bus(h)
             dt_mean, dt_rms, dt_min, dt_max, _ = summarize_bus(dt)
+            for value in h:
+                headway_points[bus].append((gamma, value))
+                if gamma <= GAMMA_ZOOM_STOP:
+                    headway_zoom_points[bus].append((gamma, value))
+            for value in dt:
+                tour_points[bus].append((gamma, value))
+                if gamma <= GAMMA_ZOOM_STOP:
+                    tour_zoom_points[bus].append((gamma, value))
             rows.append(
                 (
                     f"{gamma:.12g}",
@@ -254,9 +282,8 @@ def run_gamma_sweep(
             mean_tour_points[bus].append((gamma, dt_mean))
             rms_tour_points[bus].append((gamma, dt_rms))
 
-    label = f"N{bus_count}_gamma_{format_param(gamma_start)}_{format_param(gamma_stop)}"
     write_csv(
-        out_dir / f"sweep_summary_{label}.csv",
+        data_dir / f"sweep_summary_{label}_gamma_{format_param(gamma_start)}_{format_param(gamma_stop)}.csv",
         (
             "gamma",
             "bus_count",
@@ -290,6 +317,123 @@ def run_gamma_sweep(
             for bus, points in enumerate(points_by_bus)
         )
 
+    def point_series(points: list[tuple[float, float]], bus: int, radius: float = 0.75) -> tuple[Series, ...]:
+        return (
+            Series(
+                f"Bus {bus + 1}",
+                tuple(points),
+                "#000000",
+                "points",
+                radius=radius,
+                marker="square",
+                stride=2,
+            ),
+        )
+
+    full_xlim = (gamma_start, gamma_stop)
+    zoom_xlim = (gamma_start, min(GAMMA_ZOOM_STOP, gamma_stop))
+    headway_full_panels = []
+    headway_zoom_panels = []
+    tour_full_panels = []
+    tour_zoom_panels = []
+    for bus in range(bus_count):
+        headway_full_panels.append(
+            Panel(
+                f"Bus {bus + 1}, S={speeds[bus]:g}",
+                "Loading parameter Gamma",
+                f"H{bus + 1}(m)",
+                point_series(headway_points[bus], bus),
+                xlim=full_xlim,
+            )
+        )
+        headway_zoom_panels.append(
+            Panel(
+                f"Bus {bus + 1}, S={speeds[bus]:g}",
+                "Loading parameter Gamma",
+                f"H{bus + 1}(m)",
+                point_series(headway_zoom_points[bus], bus, radius=0.9),
+                xlim=zoom_xlim,
+            )
+        )
+        tour_full_panels.append(
+            Panel(
+                f"Bus {bus + 1}, S={speeds[bus]:g}",
+                "Loading parameter Gamma",
+                f"Delta T{bus + 1}(m)",
+                point_series(tour_points[bus], bus),
+                xlim=full_xlim,
+            )
+        )
+        tour_zoom_panels.append(
+            Panel(
+                f"Bus {bus + 1}, S={speeds[bus]:g}",
+                "Loading parameter Gamma",
+                f"Delta T{bus + 1}(m)",
+                point_series(tour_zoom_points[bus], bus, radius=0.9),
+                xlim=zoom_xlim,
+            )
+        )
+
+    save_svg_grid(
+        figure_dir / f"multibus_fig2_headway_bifurcation_{label}.svg",
+        headway_full_panels,
+        title=f"Multi-bus Fig. 2 analogue: headway bifurcation, N={bus_count}",
+    )
+    save_svg_grid(
+        figure_dir / f"multibus_fig3_headway_zoom_{label}.svg",
+        headway_zoom_panels,
+        title=f"Multi-bus Fig. 3 analogue: headway zoom, N={bus_count}",
+    )
+    save_svg_grid(
+        figure_dir / f"multibus_fig4_tour_times_{label}.svg",
+        tour_full_panels,
+        title=f"Multi-bus Fig. 4 analogue: tour times, N={bus_count}",
+    )
+    save_svg_grid(
+        figure_dir / f"multibus_fig5_tour_times_zoom_{label}.svg",
+        tour_zoom_panels,
+        title=f"Multi-bus Fig. 5 analogue: tour-time zoom, N={bus_count}",
+    )
+
+    return_map_panels = []
+    return_rows = []
+    for gamma in RETURN_MAP_GAMMAS:
+        if gamma < gamma_start or gamma > gamma_stop:
+            continue
+        result = simulate(gamma, speeds, trips=max(trips, sample_stop + 2), initial_times=initial_times)
+        for bus in range(bus_count):
+            h = sample_window(result.headways[bus], sample_start, sample_stop + 1)
+            points = tuple((h[idx], h[idx + 1]) for idx in range(max(0, len(h) - 1)))
+            for idx, (x_val, y_val) in enumerate(points):
+                return_rows.append((f"{gamma:.12g}", bus + 1, sample_start + idx, f"{x_val:.12g}", f"{y_val:.12g}"))
+            return_map_panels.append(
+                Panel(
+                    f"Gamma={gamma:g}, Bus {bus + 1}",
+                    f"H{bus + 1}(m)",
+                    f"H{bus + 1}(m+1)",
+                    (
+                        Series("", ((0.0, 0.0), (1.5, 1.5)), "#777777", "line", stroke_width=1.1),
+                        Series("", points, PALETTE[bus % len(PALETTE)], "points", radius=1.1, marker="square", stride=2),
+                    ),
+                    xlim=(0.0, 1.5),
+                    ylim=(0.0, 1.5),
+                    aspect=1.0,
+                    xticks=(0.0, 0.5, 1.0, 1.5),
+                    yticks=(0.0, 0.5, 1.0, 1.5),
+                )
+            )
+    if return_map_panels:
+        write_csv(
+            data_dir / f"return_maps_{label}.csv",
+            ("gamma", "bus_id", "trip_m", "H_i_m", "H_i_m_plus_1"),
+            return_rows,
+        )
+        save_svg_grid(
+            figure_dir / f"multibus_fig6_return_maps_{label}.svg",
+            return_map_panels,
+            title=f"Multi-bus Fig. 6 analogue: return maps, N={bus_count}",
+        )
+
     panels = (
         Panel(
             "(a) Mean headway",
@@ -299,17 +443,17 @@ def run_gamma_sweep(
             xlim=(gamma_start, gamma_stop),
         ),
         Panel(
-            "(b) RMS headway",
-            "Loading parameter Gamma",
-            "RMS H_i",
-            series_from(rms_headway_points),
-            xlim=(gamma_start, gamma_stop),
-        ),
-        Panel(
-            "(c) Mean tour time",
+            "(b) Mean tour time",
             "Loading parameter Gamma",
             "Mean Delta T_i",
             series_from(mean_tour_points),
+            xlim=(gamma_start, gamma_stop),
+        ),
+        Panel(
+            "(c) RMS headway",
+            "Loading parameter Gamma",
+            "RMS H_i",
+            series_from(rms_headway_points),
             xlim=(gamma_start, gamma_stop),
         ),
         Panel(
@@ -321,14 +465,19 @@ def run_gamma_sweep(
         ),
     )
     save_svg_grid(
-        out_dir / f"sweep_diagnostics_{label}.svg",
+        figure_dir / f"multibus_fig7_mean_rms_{label}.svg",
         panels,
-        title=f"Exploratory N-bus extension, N={bus_count}",
+        title=f"Multi-bus Fig. 7 analogue: mean and RMS, N={bus_count}",
     )
 
     print(f"Gamma sweep written to {out_dir}")
-    print(f"  - sweep_summary_{label}.csv")
-    print(f"  - sweep_diagnostics_{label}.svg")
+    print(f"  - data/sweep_summary_{label}_gamma_{format_param(gamma_start)}_{format_param(gamma_stop)}.csv")
+    print("  - figures/multibus_fig2_headway_bifurcation_*.svg")
+    print("  - figures/multibus_fig3_headway_zoom_*.svg")
+    print("  - figures/multibus_fig4_tour_times_*.svg")
+    print("  - figures/multibus_fig5_tour_times_zoom_*.svg")
+    print("  - figures/multibus_fig6_return_maps_*.svg")
+    print("  - figures/multibus_fig7_mean_rms_*.svg")
 
 
 def build_parser() -> argparse.ArgumentParser:

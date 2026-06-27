@@ -48,8 +48,12 @@ Main files:
 - `validate.py`: quick numerical checks to confirm that the implementation is
   behaving as expected.
 - `dashboard_v2.py`: optional interactive dashboard for exploring parameters.
-- `extension_multibus/run_multibus.py`: optional extension for testing more
+- `extension_multibus/run_multibus.py`: optional CLI extension for testing more
   than two buses while keeping the same two-station shuttle structure.
+- `extension_multibus/dashboard_multibus.py`: optional interactive dashboard
+  for the generalized N-bus extension.
+- `extension_multibus/validate_multibus.py`: quick checks for the N-bus
+  extension.
 - `outputs/`: generated data and figures created by `python reproduce.py`;
   this directory is intentionally ignored by Git.
 
@@ -170,10 +174,12 @@ The main reproduction follows the two-bus experiments. The simulator itself can
 also run more than two buses because the number of buses is determined by the
 length of the speedup tuple.
 
-The extension is placed in:
+The extension files are placed in:
 
 ```text
 extension_multibus/run_multibus.py
+extension_multibus/dashboard_multibus.py
+extension_multibus/validate_multibus.py
 ```
 
 This extension keeps the same two-station shuttle setting:
@@ -183,6 +189,33 @@ origin -> destination -> origin
 ```
 
 It is an exploratory test, not a replacement for the main reproduction.
+
+For the N-bus extension, the speedup list only sets the control parameters
+`S1,...,SN`. The initial arrival times are generated automatically by spreading
+the buses evenly over one normalized base tour:
+
+```text
+T1(0) = 0
+T2(0) = 1/N
+T3(0) = 2/N
+...
+TN(0) = (N-1)/N
+```
+
+For example, with four buses the initial arrivals are:
+
+```text
+(T1(0), T2(0), T3(0), T4(0)) = (0, 0.25, 0.5, 0.75)
+```
+
+This is used to avoid artificial simultaneous first arrivals and to make the
+initial schedule evenly distributed for any number of buses.
+
+Validate the extension:
+
+```powershell
+python extension_multibus/validate_multibus.py
+```
 
 Run one four-bus case:
 
@@ -196,16 +229,40 @@ Run a four-bus Gamma sweep:
 python extension_multibus/run_multibus.py --bus-count 4 --speeds 0.5,0.2,0.3,0.4 --sweep --gamma-count 101
 ```
 
+The `--sweep` command generates graph outputs analogous to the main two-bus
+figures, but for all buses in the selected N-bus configuration:
+
+```text
+extension_multibus/outputs/data/
+extension_multibus/outputs/figures/
+```
+
+The generated SVG figures include:
+
+- `multibus_fig2_headway_bifurcation_*.svg`: headway bifurcation panels for
+  each bus;
+- `multibus_fig3_headway_zoom_*.svg`: zoomed headway bifurcation panels;
+- `multibus_fig4_tour_times_*.svg`: tour-time bifurcation panels for each bus;
+- `multibus_fig5_tour_times_zoom_*.svg`: zoomed tour-time panels;
+- `multibus_fig6_return_maps_*.svg`: return maps for selected Gamma values and
+  each bus;
+- `multibus_fig7_mean_rms_*.svg`: mean and RMS curves for all buses.
+
+There is no direct copy of the paper's Fig. 8 for the multi-bus case because
+the original phase boundary is defined for the two-bus equal-speed setting. For
+the N-bus extension, the mean/RMS and return-map figures are used as the main
+diagnostics.
+
 Run five buses with equal speedup:
 
 ```powershell
 python extension_multibus/run_multibus.py --bus-count 5 --equal-speed 0.3 --gamma 0.2 --sweep
 ```
 
-Extension outputs are written to:
+Single-run extension CSV outputs are written to:
 
 ```text
-extension_multibus/outputs/
+extension_multibus/outputs/data/
 ```
 
 The extension summary CSV reports, for each bus:
@@ -217,6 +274,28 @@ The extension summary CSV reports, for each bus:
 - mean tour time;
 - RMS tour-time variation;
 - qualitative motion label.
+
+Run the interactive N-bus dashboard:
+
+```powershell
+python extension_multibus/dashboard_multibus.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8051/
+```
+
+The multi-bus dashboard lets the user set:
+
+- number of buses `N`;
+- speedup list `S1,...,SN`;
+- loading parameter `Gamma`;
+- sample window and sweep resolution.
+
+It shows per-bus summary statistics, headway and tour-time traces, return maps,
+arrival event ordering, Gamma sweep diagnostics, and a route snapshot.
 
 ## Fresh Clone Checklist
 
@@ -239,7 +318,15 @@ python dashboard_v2.py
 Optional multi-bus extension check:
 
 ```powershell
+python extension_multibus/validate_multibus.py
 python extension_multibus/run_multibus.py --bus-count 4 --gamma 0.2 --speeds 0.5,0.2,0.3,0.4
+```
+
+Optional multi-bus dashboard check:
+
+```powershell
+pip install -r requirements.txt
+python extension_multibus/dashboard_multibus.py
 ```
 
 If `validate.py` prints `All validation checks passed` and `reproduce.py`
