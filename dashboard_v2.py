@@ -20,6 +20,39 @@ except Exception:
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], title="Shuttle Bus Chaos Dashboard")
 
+
+def empty_figure(title):
+    fig = go.Figure()
+    fig.update_layout(
+        template='plotly_white',
+        title=title,
+        margin=dict(l=40, r=40, t=50, b=40),
+        annotations=[
+            dict(
+                text="No bus selected",
+                x=0.5,
+                y=0.5,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(color="#7f8c8d"),
+            )
+        ],
+    )
+    return fig
+
+
+def active_buses(selected_buses):
+    buses = []
+    for value in selected_buses or []:
+        try:
+            bus = int(value)
+        except (TypeError, ValueError):
+            continue
+        if bus in (1, 2) and bus not in buses:
+            buses.append(bus)
+    return buses
+
 # ==========================================
 # 1. SIDEBAR
 # ==========================================
@@ -67,6 +100,20 @@ content = html.Div(
                 html.H3("...", id="kpi-h2", className="text-warning font-weight-bold")
             ]), className="shadow-sm")),
         ], className="mb-4"),
+
+        html.Div([
+            html.Span("Show buses:", className="fw-bold me-2"),
+            dbc.Checklist(
+                id="bus-selector",
+                options=[{"label": "Bus 1", "value": 1}, {"label": "Bus 2", "value": 2}],
+                value=[1],
+                inline=True,
+                className="btn-group flex-wrap",
+                inputClassName="btn-check",
+                labelClassName="btn btn-outline-primary btn-sm",
+                labelCheckedClassName="active",
+            ),
+        ], className="mb-3"),
 
         dcc.Loading(type="default", children=[
             dbc.Tabs([
@@ -258,13 +305,14 @@ def build_animation_figure(diverged, gamma, s1, s2):
 # ==========================================
 @app.callback(
     [Output('kpi-status', 'children'), Output('kpi-status', 'className'), Output('kpi-h1', 'children'), Output('kpi-h2', 'children'), Output('fig1-headway', 'figure'), Output('fig2-tourtime', 'figure'), Output('fig3-returnmap', 'figure'), Output('fig4-mean', 'figure'), Output('fig4-rms', 'figure'), Output('fig5-phase', 'figure'), Output('fig6-animation', 'figure')],
-    [Input('run-button', 'n_clicks')],
+    [Input('run-button', 'n_clicks'), Input('bus-selector', 'value')],
     [State('s1-slider', 'value'), State('s2-slider', 'value'), State('gamma-slider', 'value'), State('p1-x-range', 'value'), State('p1-y-range', 'value'), State('p3-x-range', 'value'), State('p3-y-range', 'value')]
 )
-def update_dashboard(n_clicks, s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
+def update_dashboard(n_clicks, selected_buses, s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
     gamma_values = shuttle_bus.gamma_values(0.0, 2.0, 1000)
+    selected = active_buses(selected_buses)
     
-    bif_g, bif_h1, tour_g, tour_t1, tour_t2 = [], [], [], [], []
+    bif_g, bif_h1, bif_g2, bif_h2, tour_g, tour_t1, tour_t2 = [], [], [], [], [], [], []
     mean_h1, rms_h1, mean_h2, rms_h2, mean_t1, rms_t1, mean_t2, rms_t2 = [], [], [], [], [], [], [], []
     
     for g in gamma_values:
@@ -283,6 +331,8 @@ def update_dashboard(n_clicks, s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
         stride = 2
         bif_g.extend([g] * len(h1_window[::stride]))
         bif_h1.extend(h1_window[::stride])
+        bif_g2.extend([g] * len(h2_window[::stride]))
+        bif_h2.extend(h2_window[::stride])
         tour_g.extend([g] * len(t1_window[::stride]))
         tour_t1.extend(t1_window[::stride])
         tour_t2.extend(t2_window[::stride])
@@ -295,7 +345,7 @@ def update_dashboard(n_clicks, s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
     if target_gamma <= 0.0:
         diverged_status = False
         kpi_h1_text, kpi_h2_text = "0.50 m", "0.50 m"
-        x_ret, y_ret = [], []
+        x_ret, y_ret, x_ret2, y_ret2 = [], [], [], []
     else:
         res_ret = shuttle_bus.simulate(target_gamma, (s1, s2), trips=2050)
         
@@ -308,8 +358,10 @@ def update_dashboard(n_clicks, s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
             h2_full = shuttle_bus.inclusive_window(res_ret.headways[1], 1000, 2000)
             x_ret = h1_full[:-1][::2]
             y_ret = h1_full[1:][::2]
+            x_ret2 = h2_full[:-1][::2]
+            y_ret2 = h2_full[1:][::2]
         except Exception:
-            x_ret, y_ret = [], []
+            x_ret, y_ret, x_ret2, y_ret2 = [], [], [], []
             
         if diverged_status:
             kpi_h1_text, kpi_h2_text = "N/A (Chaos)", "N/A (Chaos)"
@@ -325,17 +377,33 @@ def update_dashboard(n_clicks, s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
         kpi_class = "text-success font-weight-bold"
 
     layout_temp = 'plotly_white'
-    fig1 = go.Figure(go.Scattergl(x=bif_g, y=bif_h1, mode='markers', marker=dict(symbol='square', size=2, color='#2c3e50')))
-    fig1.update_layout(template=layout_temp, title="Headway Bifurcation (H1)", margin=dict(l=40, r=40, t=50, b=40), xaxis=dict(range=p1_x), yaxis=dict(range=p1_y))
+    fig1 = go.Figure()
+    if 1 in selected:
+        fig1.add_trace(go.Scattergl(x=bif_g, y=bif_h1, mode='markers', marker=dict(symbol='square', size=2, color='#2c3e50'), name="Bus 1"))
+    if 2 in selected:
+        fig1.add_trace(go.Scattergl(x=bif_g2, y=bif_h2, mode='markers', marker=dict(symbol='square', size=2, color='#ff7f0e'), name="Bus 2"))
+    if not selected:
+        fig1 = empty_figure("Headway Bifurcation")
+    fig1.update_layout(template=layout_temp, title="Headway Bifurcation", margin=dict(l=40, r=40, t=50, b=40), xaxis=dict(range=p1_x), yaxis=dict(range=p1_y))
 
     fig2 = go.Figure()
-    fig2.add_trace(go.Scattergl(x=tour_g, y=tour_t1, mode='markers', marker=dict(size=2, color='#1f77b4'), name="Bus 1"))
-    fig2.add_trace(go.Scattergl(x=tour_g, y=tour_t2, mode='markers', marker=dict(size=2, color='#ff7f0e'), name="Bus 2"))
+    if 1 in selected:
+        fig2.add_trace(go.Scattergl(x=tour_g, y=tour_t1, mode='markers', marker=dict(size=2, color='#1f77b4'), name="Bus 1"))
+    if 2 in selected:
+        fig2.add_trace(go.Scattergl(x=tour_g, y=tour_t2, mode='markers', marker=dict(size=2, color='#ff7f0e'), name="Bus 2"))
+    if not selected:
+        fig2 = empty_figure("Tour Times")
     fig2.update_layout(template=layout_temp, title="Tour Times", margin=dict(l=40, r=40, t=50, b=40), xaxis=dict(range=p1_x), yaxis=dict(range=p1_y))
 
     fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(x=x_ret, y=y_ret, mode='markers', marker=dict(symbol='circle-open', size=4, color='#2c3e50', line=dict(width=1)), name=f"Gamma={target_gamma}"))
-    fig3.add_trace(go.Scatter(x=[0.0, 1.5], y=[0.0, 1.5], mode='lines', line=dict(color='#7f8c8d', width=1, dash='dash'), showlegend=False))
+    if 1 in selected:
+        fig3.add_trace(go.Scatter(x=x_ret, y=y_ret, mode='markers', marker=dict(symbol='circle-open', size=4, color='#2c3e50', line=dict(width=1)), name=f"Bus 1, Gamma={target_gamma}"))
+    if 2 in selected:
+        fig3.add_trace(go.Scatter(x=x_ret2, y=y_ret2, mode='markers', marker=dict(symbol='circle-open', size=4, color='#ff7f0e', line=dict(width=1)), name=f"Bus 2, Gamma={target_gamma}"))
+    if selected:
+        fig3.add_trace(go.Scatter(x=[0.0, 1.5], y=[0.0, 1.5], mode='lines', line=dict(color='#7f8c8d', width=1, dash='dash'), showlegend=False))
+    else:
+        fig3 = empty_figure("Return Map")
     fig3.update_layout(template=layout_temp, title=f"Return Map (Gamma={target_gamma})", xaxis_title="Headway at trip m", yaxis_title="Headway at trip m+1", margin=dict(l=40, r=40, t=50, b=40), xaxis=dict(range=[-0.1, 1.6]), yaxis=dict(range=[-0.1, 1.6], scaleanchor="x", scaleratio=1))
 
     fig4_mean = go.Figure()
@@ -350,6 +418,29 @@ def update_dashboard(n_clicks, s1, s2, target_gamma, p1_x, p1_y, p3_x, p3_y):
         go.Scatter(x=gamma_values, y=rms_h1, line=dict(color='#1f77b4'), name="RMS H1"), go.Scatter(x=gamma_values, y=rms_h2, line=dict(color='#ff7f0e'), name="RMS H2"),
         go.Scatter(x=gamma_values, y=rms_t1, line=dict(color='#2ca02c'), name="RMS ΔT1"), go.Scatter(x=gamma_values, y=rms_t2, line=dict(color='#d62728'), name="RMS ΔT2")
     ])
+    fig4_rms.update_layout(template=layout_temp, title="RMS Variation", xaxis=dict(range=p3_x), yaxis=dict(range=p3_y))
+
+    sweep_gamma_values = [g for g in gamma_values if 0.0 < g < 2.0]
+    fig4_mean = go.Figure()
+    if 1 in selected:
+        fig4_mean.add_trace(go.Scatter(x=sweep_gamma_values, y=mean_h1, line=dict(color='#1f77b4'), name="Mean H1"))
+        fig4_mean.add_trace(go.Scatter(x=sweep_gamma_values, y=mean_t1, line=dict(color='#2ca02c'), name="Mean DT1"))
+    if 2 in selected:
+        fig4_mean.add_trace(go.Scatter(x=sweep_gamma_values, y=mean_h2, line=dict(color='#ff7f0e'), name="Mean H2"))
+        fig4_mean.add_trace(go.Scatter(x=sweep_gamma_values, y=mean_t2, line=dict(color='#d62728'), name="Mean DT2"))
+    if not selected:
+        fig4_mean = empty_figure("Mean Values")
+    fig4_mean.update_layout(template=layout_temp, title="Mean Values", xaxis=dict(range=p3_x), yaxis=dict(range=p3_y))
+
+    fig4_rms = go.Figure()
+    if 1 in selected:
+        fig4_rms.add_trace(go.Scatter(x=sweep_gamma_values, y=rms_h1, line=dict(color='#1f77b4'), name="RMS H1"))
+        fig4_rms.add_trace(go.Scatter(x=sweep_gamma_values, y=rms_t1, line=dict(color='#2ca02c'), name="RMS DT1"))
+    if 2 in selected:
+        fig4_rms.add_trace(go.Scatter(x=sweep_gamma_values, y=rms_h2, line=dict(color='#ff7f0e'), name="RMS H2"))
+        fig4_rms.add_trace(go.Scatter(x=sweep_gamma_values, y=rms_t2, line=dict(color='#d62728'), name="RMS DT2"))
+    if not selected:
+        fig4_rms = empty_figure("RMS Variation")
     fig4_rms.update_layout(template=layout_temp, title="RMS Variation", xaxis=dict(range=p3_x), yaxis=dict(range=p3_y))
 
     fig5 = go.Figure()

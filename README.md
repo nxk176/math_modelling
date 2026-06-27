@@ -229,6 +229,18 @@ Run a four-bus Gamma sweep:
 python extension_multibus/run_multibus.py --bus-count 4 --speeds 0.5,0.2,0.3,0.4 --sweep --gamma-count 101
 ```
 
+If `--gamma-start`, `--gamma-stop`, and `--gamma-count` are not overridden,
+the extension sweep uses:
+
+```text
+gamma_start = 0.0
+gamma_stop  = 2.0
+gamma_count = 101
+```
+
+This means the sweep runs 101 evenly spaced loading-parameter values from
+`Gamma = 0.00` to `Gamma = 2.00`, with step size `0.02`.
+
 The `--sweep` command generates graph outputs analogous to the main two-bus
 figures, but for all buses in the selected N-bus configuration:
 
@@ -287,15 +299,37 @@ Then open:
 http://127.0.0.1:8051/
 ```
 
-The multi-bus dashboard lets the user set:
+The multi-bus dashboard lets the user set the main simulation parameters:
 
-- number of buses `N`;
-- speedup list `S1,...,SN`;
-- loading parameter `Gamma`;
-- sample window and sweep resolution.
+- `Number of buses N`: the number of buses running on the same two-station
+  loop;
+- `Speedups S1,...,SN`: comma-separated control strengths, one value per bus;
+- `Equal speed fallback`: used only when the speedup list is left empty; in
+  that case every bus receives the same speedup value;
+- `Gamma`: the passenger-loading parameter used by the return-map,
+  route-animation, and bus-summary views;
+- `Trips per bus`: the number of trips simulated for each bus;
+- `Sample start` and `Sample stop`: the long-run trip window used for
+  statistics and plotting after the transient part has been skipped;
+- `Sweep gamma max`: the maximum Gamma value used in the sweep and
+  bifurcation-scatter tabs;
+- `Sweep samples`: the number of Gamma values sampled in the sweep. Larger
+  values give denser scatter plots but take longer to run.
 
-It shows per-bus summary statistics, headway and tour-time traces, return maps,
-arrival event ordering, Gamma sweep diagnostics, and a route snapshot.
+After one run, the bus selector buttons can be used to show or hide Bus 1,
+Bus 2, and so on. The dashboard does not re-run the simulation when these
+buttons are clicked; it only redraws the graphs from the stored analysis data.
+Bus 1 is selected by default after a run. If no bus button is selected, the
+graphs remain empty. The selector affects return maps, Gamma sweep mean/RMS
+plots, and bifurcation scatter plots. In the Gamma sweep mean/RMS plots, both
+headway `H_i` and tour time `Delta T_i` are drawn as solid lines with separate
+colors.
+
+The `Headway & Tour Times` tab sweeps evenly spaced Gamma values on the x-axis
+and plots sampled long-run values on the y-axis, matching the paper-style
+scatter view used by the two-bus figures. The `Mean & RMS` tab shows mean and
+RMS curves for both headway and tour time. The `Route Animation` tab adds a
+Play/Pause demo of the buses moving around the two-station loop.
 
 ## Fresh Clone Checklist
 

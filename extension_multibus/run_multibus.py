@@ -514,7 +514,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--sweep", action="store_true", help="also run a Gamma sweep")
     parser.add_argument("--gamma-start", type=float, default=0.0, help="Gamma sweep start")
-    parser.add_argument("--gamma-stop", type=float, default=1.0, help="Gamma sweep stop")
+    parser.add_argument("--gamma-stop", type=float, default=2.0, help="Gamma sweep stop")
     parser.add_argument("--gamma-count", type=int, default=101, help="number of Gamma sweep samples")
     return parser
 

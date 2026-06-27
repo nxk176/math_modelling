@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from pathlib import Path
 import sys
+from types import SimpleNamespace
+from typing import Any, Sequence
 
 import dash
 from dash import Input, Output, State, dash_table, dcc, html
@@ -35,6 +37,18 @@ COLORS = (
     "#17becf",
 )
 
+TOUR_COLORS = (
+    "#2ca02c",
+    "#d62728",
+    "#17becf",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#bcbd22",
+    "#7f7f7f",
+    "#1f77b4",
+    "#ff7f0e",
+)
 
 def empty_figure(title: str) -> go.Figure:
     fig = go.Figure()
@@ -65,6 +79,91 @@ def format_float(value: float) -> str:
 
 def bus_color(bus: int) -> str:
     return COLORS[bus % len(COLORS)]
+
+
+def tour_color(bus: int) -> str:
+    return TOUR_COLORS[bus % len(TOUR_COLORS)]
+
+
+def bus_options(bus_count: int) -> list[dict[str, int | str]]:
+    return [{"label": f"Bus {bus + 1}", "value": bus + 1} for bus in range(bus_count)]
+
+
+def active_bus_indices(selected_buses: Sequence[int] | None, bus_count: int) -> list[int]:
+    selected = []
+    for value in selected_buses or []:
+        try:
+            bus = int(value) - 1
+        except (TypeError, ValueError):
+            continue
+        if 0 <= bus < bus_count and bus not in selected:
+            selected.append(bus)
+    return selected
+
+
+def pack_result(result) -> dict[str, Any]:
+    return {
+        "gamma": result.gamma,
+        "speeds": list(result.speeds),
+        "arrivals": [list(values) for values in result.arrivals],
+        "headways": [list(values) for values in result.headways],
+        "tour_times": [list(values) for values in result.tour_times],
+        "events": [list(event) for event in result.events],
+        "diverged": result.diverged,
+    }
+
+
+def unpack_result(data: dict[str, Any]) -> SimpleNamespace:
+    arrivals = tuple(tuple(values) for values in data["arrivals"])
+    return SimpleNamespace(
+        gamma=float(data["gamma"]),
+        speeds=tuple(float(value) for value in data["speeds"]),
+        arrivals=arrivals,
+        headways=tuple(tuple(values) for values in data["headways"]),
+        tour_times=tuple(tuple(values) for values in data["tour_times"]),
+        events=tuple(tuple(event) for event in data["events"]),
+        diverged=bool(data["diverged"]),
+        bus_count=len(arrivals),
+        completed_trips=min(len(values) for values in arrivals) if arrivals else 0,
+    )
+
+
+def build_sweep_data(
+    *,
+    speeds: tuple[float, ...],
+    trips: int,
+    sample_start: int,
+    sample_stop: int,
+    gamma_stop: float,
+    gamma_count: int,
+) -> dict[str, Any]:
+    starts = default_initial_times(len(speeds))
+    data: dict[str, Any] = {
+        "gammas": [],
+        "mean_h": [[] for _ in speeds],
+        "rms_h": [[] for _ in speeds],
+        "mean_tour": [[] for _ in speeds],
+        "rms_tour": [[] for _ in speeds],
+        "headway": [[] for _ in speeds],
+        "tour": [[] for _ in speeds],
+    }
+
+    for gamma in gamma_values(0.0, gamma_stop, gamma_count):
+        data["gammas"].append(gamma)
+        result = simulate(gamma, speeds, trips=trips, initial_times=starts)
+        for bus in range(result.bus_count):
+            headway_sample = sample_window(result.headways[bus], sample_start, sample_stop)
+            tour_sample = sample_window(result.tour_times[bus], sample_start, sample_stop)
+            h_mean, h_rms, *_ = summarize_bus(headway_sample)
+            tour_mean, tour_rms, *_ = summarize_bus(tour_sample)
+            data["mean_h"][bus].append((gamma, h_mean))
+            data["rms_h"][bus].append((gamma, h_rms))
+            data["mean_tour"][bus].append((gamma, tour_mean))
+            data["rms_tour"][bus].append((gamma, tour_rms))
+            if gamma > 0.0:
+                data["headway"][bus].extend((gamma, value) for value in headway_sample)
+                data["tour"][bus].extend((gamma, value) for value in tour_sample)
+    return data
 
 
 def build_summary(result, speeds: tuple[float, ...], sample_start: int, sample_stop: int) -> list[dict[str, str]]:
@@ -105,41 +204,15 @@ def system_state(rows: list[dict[str, str]], diverged: bool) -> tuple[str, str]:
     return "Mixed", "secondary"
 
 
-def time_series_figure(result, sample_start: int, sample_stop: int, kind: str) -> go.Figure:
-    title = "Headway samples" if kind == "headway" else "Tour-time samples"
-    ylabel = "H_i(m)" if kind == "headway" else "Delta T_i(m)"
-    values_by_bus = result.headways if kind == "headway" else result.tour_times
-    fig = go.Figure()
-
-    for bus, values in enumerate(values_by_bus):
-        sample = sample_window(values, sample_start, sample_stop)
-        x_values = list(range(sample_start, sample_start + len(sample)))
-        fig.add_trace(
-            go.Scattergl(
-                x=x_values,
-                y=sample,
-                mode="lines",
-                name=f"Bus {bus + 1}",
-                line=dict(color=bus_color(bus), width=1.6),
-            )
-        )
-
-    fig.update_layout(
-        template="plotly_white",
-        title=title,
-        xaxis_title="Trip index m",
-        yaxis_title=ylabel,
-        margin=dict(l=55, r=25, t=55, b=45),
-        legend=dict(orientation="h", y=-0.22),
-    )
-    return fig
-
-
-def return_map_figure(result, selected_bus: int, sample_start: int, sample_stop: int) -> go.Figure:
-    bus = max(0, min(result.bus_count - 1, selected_bus - 1))
-    values = sample_window(result.headways[bus], sample_start, sample_stop)
-    x_values = values[:-1]
-    y_values = values[1:]
+def return_map_figure(
+    result,
+    selected_buses: Sequence[int] | None,
+    sample_start: int,
+    sample_stop: int,
+) -> go.Figure:
+    active_buses = active_bus_indices(selected_buses, result.bus_count)
+    if not active_buses:
+        return empty_figure("Return map")
 
     fig = go.Figure()
     fig.add_trace(
@@ -151,145 +224,229 @@ def return_map_figure(result, selected_bus: int, sample_start: int, sample_stop:
             showlegend=False,
         )
     )
-    fig.add_trace(
-        go.Scattergl(
-            x=x_values,
-            y=y_values,
-            mode="markers",
-            marker=dict(color=bus_color(bus), size=4),
-            name=f"Bus {bus + 1}",
+    for bus in active_buses:
+        values = sample_window(result.headways[bus], sample_start, sample_stop)
+        fig.add_trace(
+            go.Scattergl(
+                x=values[:-1],
+                y=values[1:],
+                mode="markers",
+                marker=dict(color=bus_color(bus), size=4, opacity=0.85),
+                name=f"Bus {bus + 1}",
+            )
         )
-    )
     fig.update_layout(
         template="plotly_white",
-        title=f"Return map for Bus {bus + 1}",
+        title="Return map",
         xaxis_title="H_i(m)",
         yaxis_title="H_i(m+1)",
         margin=dict(l=55, r=25, t=55, b=45),
+        legend=dict(orientation="h", y=-0.22),
     )
     return fig
 
 
-def event_order_figure(result, max_events: int = 500) -> go.Figure:
-    events = result.events[-max_events:]
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scattergl(
-            x=[event[0] for event in events],
-            y=[event[1] + 1 for event in events],
-            mode="markers",
-            marker=dict(
-                color=[bus_color(event[1]) for event in events],
-                size=5,
-            ),
-            text=[f"Bus {event[1] + 1}, trip {event[2]}" for event in events],
-            name="Arrival events",
-        )
-    )
-    fig.update_layout(
-        template="plotly_white",
-        title=f"Last {len(events)} origin-arrival events",
-        xaxis_title="Arrival time at origin",
-        yaxis_title="Bus id",
-        yaxis=dict(dtick=1),
-        margin=dict(l=55, r=25, t=55, b=45),
-        showlegend=False,
-    )
-    return fig
+def route_animation_figure(result) -> go.Figure:
+    """Build a smooth route animation similar to the two-bus dashboard."""
 
+    t_max_sim = 15.0
+    fps = 32
+    frame_times = [i / fps for i in range(int(t_max_sim * fps))]
+    segments_by_bus: list[list[tuple[float, float, float, float]]] = [[] for _ in range(result.bus_count)]
 
-def route_snapshot_figure(result, sample_stop: int) -> go.Figure:
+    for bus, arrivals in enumerate(result.arrivals):
+        if arrivals and arrivals[0] > 0:
+            segments_by_bus[bus].append((0.0, arrivals[0], math.pi, math.pi))
+
+    for time, bus, _trip, headway, tour in result.events:
+        if time > t_max_sim + 2.0:
+            break
+        delay_total = max(0.0, result.gamma * headway)
+        travel_total = max(0.0, tour - delay_total)
+        delay_half = delay_total / 2.0
+        travel_half = travel_total / 2.0
+
+        t1 = time
+        t2 = t1 + delay_half
+        t3 = t2 + travel_half
+        t4 = t3 + delay_half
+        t5 = t4 + travel_half
+
+        segments = segments_by_bus[bus]
+        segments.append((t1, t2, math.pi, math.pi))
+        segments.append((t2, t3, math.pi, 0.0))
+        segments.append((t3, t4, 0.0, 0.0))
+        segments.append((t4, t5, 0.0, -math.pi))
+
+    def theta_at(t: float, segments: list[tuple[float, float, float, float]]) -> float:
+        if not segments:
+            return math.pi
+        for start, stop, theta_start, theta_stop in segments:
+            if start <= t <= stop:
+                if stop <= start:
+                    return theta_start
+                ratio = (t - start) / (stop - start)
+                return theta_start + (theta_stop - theta_start) * ratio
+        if t < segments[0][0]:
+            return segments[0][2]
+        return segments[-1][3]
+
+    def positions_at(t: float) -> tuple[list[float], list[float]]:
+        x_values = []
+        y_values = []
+        for bus, segments in enumerate(segments_by_bus):
+            theta = theta_at(t, segments)
+            x_values.append(math.cos(theta))
+            y_values.append(math.sin(theta))
+        return x_values, y_values
+
+    arrival_times = [event[0] for event in result.events if event[0] <= t_max_sim]
+
+    def passenger_text(t: float) -> str:
+        previous = [arrival for arrival in arrival_times if arrival <= t]
+        last_arrival = previous[-1] if previous else 0.0
+        return f"Origin: {int(max(0.0, t - last_arrival) * 20)} waiting"
+
     fig = go.Figure()
-    theta = [2 * math.pi * i / 240 for i in range(241)]
+    theta = [-math.pi + 2.0 * math.pi * i / 180 for i in range(181)]
+    x0, y0 = positions_at(0.0)
     fig.add_trace(
         go.Scatter(
             x=[math.cos(t) for t in theta],
             y=[math.sin(t) for t in theta],
             mode="lines",
-            line=dict(color="#bdc3c7", width=2),
-            name="Route",
+            line=dict(color="#bdc3c7", width=3),
+            showlegend=False,
+            hoverinfo="skip",
         )
     )
     fig.add_trace(
         go.Scatter(
-            x=[1.0, -1.0],
+            x=[-1.0, 1.0],
             y=[0.0, 0.0],
             mode="markers+text",
-            marker=dict(color=["#2c3e50", "#7f8c8d"], size=13, symbol="square"),
+            marker=dict(color="#7f8c8d", size=16, symbol="square"),
             text=["Origin", "Destination"],
             textposition=["bottom center", "top center"],
             name="Stations",
         )
     )
-
-    x_bus = []
-    y_bus = []
-    labels = []
-    colors = []
-    for bus, arrivals in enumerate(result.arrivals):
-        if not arrivals:
-            continue
-        idx = min(sample_stop, len(arrivals) - 1)
-        phase = arrivals[idx] % 1.0
-        angle = 2 * math.pi * phase
-        x_bus.append(math.cos(angle))
-        y_bus.append(math.sin(angle))
-        labels.append(f"Bus {bus + 1}")
-        colors.append(bus_color(bus))
-
     fig.add_trace(
         go.Scatter(
-            x=x_bus,
-            y=y_bus,
+            x=x0,
+            y=y0,
             mode="markers+text",
-            marker=dict(color=colors, size=18, line=dict(color="white", width=2)),
-            text=labels,
+            marker=dict(
+                color=[bus_color(bus) for bus in range(result.bus_count)],
+                size=22,
+                line=dict(color="white", width=2),
+            ),
+            text=[f"B{bus + 1}" for bus in range(result.bus_count)],
             textposition="top center",
             name="Buses",
         )
     )
+    fig.add_trace(
+        go.Scatter(
+            x=[-1.35, 1.35],
+            y=[0.25, 0.25],
+            mode="text",
+            text=[passenger_text(0.0), "Destination"],
+            textfont=dict(size=14, color="#c0392b"),
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+
+    frames = []
+    for idx, t in enumerate(frame_times):
+        x_bus, y_bus = positions_at(t)
+        frames.append(
+            go.Frame(
+                data=[
+                    go.Scatter(x=x_bus, y=y_bus),
+                    go.Scatter(text=[passenger_text(t), "Destination"]),
+                ],
+                traces=[2, 3],
+                name=f"frame{idx}",
+            )
+        )
+    fig.frames = frames
     fig.update_layout(
         template="plotly_white",
-        title="Route snapshot from normalized arrival phases",
-        xaxis=dict(visible=False, range=[-1.35, 1.35]),
-        yaxis=dict(visible=False, range=[-1.35, 1.35], scaleanchor="x", scaleratio=1),
-        margin=dict(l=25, r=25, t=55, b=25),
-        legend=dict(orientation="h", y=-0.08),
+        xaxis=dict(visible=False, range=[-2.0, 2.0], showgrid=False, zeroline=False),
+        yaxis=dict(visible=False, range=[-1.5, 1.5], showgrid=False, zeroline=False, scaleanchor="x", scaleratio=1),
+        margin=dict(l=20, r=20, t=20, b=20),
+        legend=dict(orientation="h", y=-0.06),
+        updatemenus=[
+            {
+                "type": "buttons",
+                "showactive": False,
+                "x": 0.5,
+                "y": -0.08,
+                "xanchor": "center",
+                "yanchor": "top",
+                "direction": "left",
+                "buttons": [
+                    {
+                        "label": "Play Simulation",
+                        "method": "animate",
+                        "args": [
+                            None,
+                            {
+                                "frame": {"duration": 50, "redraw": False},
+                                "fromcurrent": True,
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    },
+                    {
+                        "label": "Pause",
+                        "method": "animate",
+                        "args": [
+                            [None],
+                            {
+                                "frame": {"duration": 0, "redraw": False},
+                                "mode": "immediate",
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
     )
     return fig
 
 
-def sweep_figures(
-    *,
-    speeds: tuple[float, ...],
-    trips: int,
-    sample_start: int,
-    sample_stop: int,
-    gamma_stop: float,
-    gamma_count: int,
-) -> tuple[go.Figure, go.Figure]:
-    mean_points = [[] for _ in speeds]
-    rms_points = [[] for _ in speeds]
-    starts = default_initial_times(len(speeds))
+def sweep_figures(sweep_data: dict[str, Any], selected_buses: Sequence[int] | None) -> tuple[go.Figure, go.Figure]:
+    bus_count = len(sweep_data["mean_h"])
+    active_buses = active_bus_indices(selected_buses, bus_count)
 
-    for gamma in gamma_values(0.0, gamma_stop, gamma_count):
-        result = simulate(gamma, speeds, trips=trips, initial_times=starts)
-        for bus in range(result.bus_count):
-            sample = sample_window(result.headways[bus], sample_start, sample_stop)
-            h_mean, h_rms, *_ = summarize_bus(sample)
-            mean_points[bus].append((gamma, h_mean))
-            rms_points[bus].append((gamma, h_rms))
+    def make_fig(headway_key: str, tour_key: str, title: str, ylabel: str) -> go.Figure:
+        if not active_buses:
+            return empty_figure(title)
 
-    def make_fig(points_by_bus, title, ylabel):
         fig = go.Figure()
-        for bus, points in enumerate(points_by_bus):
+        for bus in active_buses:
+            headway_points = sweep_data[headway_key][bus]
+            tour_points = sweep_data[tour_key][bus]
             fig.add_trace(
                 go.Scatter(
-                    x=[x for x, _ in points],
-                    y=[y for _, y in points],
+                    x=[x for x, _ in headway_points],
+                    y=[y for _, y in headway_points],
                     mode="lines",
-                    name=f"Bus {bus + 1}",
+                    name=f"H{bus + 1}",
                     line=dict(color=bus_color(bus), width=1.7),
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[x for x, _ in tour_points],
+                    y=[y for _, y in tour_points],
+                    mode="lines",
+                    name=f"DT{bus + 1}",
+                    line=dict(color=tour_color(bus), width=1.9),
                 )
             )
         fig.update_layout(
@@ -303,8 +460,49 @@ def sweep_figures(
         return fig
 
     return (
-        make_fig(mean_points, "Gamma sweep: mean headway", "Mean H_i"),
-        make_fig(rms_points, "Gamma sweep: RMS headway variation", "RMS H_i"),
+        make_fig("mean_h", "mean_tour", "Gamma sweep: mean values", "Mean value"),
+        make_fig("rms_h", "rms_tour", "Gamma sweep: RMS variations", "RMS value"),
+    )
+
+
+def bifurcation_figures(
+    sweep_data: dict[str, Any],
+    selected_buses: Sequence[int] | None,
+) -> tuple[go.Figure, go.Figure]:
+    """Build paper-style bifurcation scatter plots from stored sweep data."""
+
+    bus_count = len(sweep_data["headway"])
+    active_buses = active_bus_indices(selected_buses, bus_count)
+
+    def make_scatter(key: str, title: str, ylabel: str) -> go.Figure:
+        if not active_buses:
+            return empty_figure(title)
+
+        fig = go.Figure()
+        for bus in active_buses:
+            points = sweep_data[key][bus]
+            fig.add_trace(
+                go.Scattergl(
+                    x=[x for x, _ in points],
+                    y=[y for _, y in points],
+                    mode="markers",
+                    marker=dict(color=bus_color(bus), size=2.5, symbol="square", opacity=0.55),
+                    name=f"Bus {bus + 1}",
+                )
+            )
+        fig.update_layout(
+            template="plotly_white",
+            title=title,
+            xaxis_title="Loading parameter Gamma",
+            yaxis_title=ylabel,
+            margin=dict(l=55, r=25, t=55, b=45),
+            legend=dict(orientation="h", y=-0.22),
+        )
+        return fig
+
+    return (
+        make_scatter("headway", "Bifurcation scatter: headway samples", "H_i(m)"),
+        make_scatter("tour", "Bifurcation scatter: tour-time samples", "Delta T_i(m)"),
     )
 
 
@@ -315,28 +513,29 @@ sidebar = html.Div(
         dbc.Input(id="bus-count", type="number", min=2, max=10, step=1, value=4),
         html.Label("Speedups S1,...,SN", className="fw-bold mt-3"),
         dbc.Input(id="speeds", type="text", value="0.5,0.2,0.3,0.4"),
-        html.Div("Comma-separated. Length must match N.", className="text-muted small mt-1"),
+        html.P("Comma-separated; one value per bus.", style={"fontSize": "12px", "color": "#7f8c8d", "margin": "2px 0 0"}),
         html.Label("Equal speed fallback", className="fw-bold mt-3"),
         dbc.Input(id="equal-speed", type="number", min=0, max=2, step=0.05, value=0.2),
+        html.P("Used only if the speedup list is empty.", style={"fontSize": "12px", "color": "#7f8c8d", "margin": "2px 0 0"}),
         html.Label("Gamma", className="fw-bold mt-3"),
-        dcc.Slider(id="gamma", min=0.0, max=2.0, step=0.05, value=0.2, marks={0: "0", 0.5: "0.5", 1: "1", 1.5: "1.5", 2: "2"}),
+        dcc.Slider(id="gamma", min=0.0, max=2.0, step=0.05, value=0.5, marks={0: "0", 0.5: "0.5", 1: "1", 1.5: "1.5", 2: "2"}),
+        html.P("Used for Return Map, KPI, and animation.", style={"fontSize": "12px", "color": "#7f8c8d", "margin": "2px 0 0"}),
         html.Label("Trips per bus", className="fw-bold mt-3"),
-        dbc.Input(id="trips", type="number", min=200, max=4000, step=100, value=1200),
+        dbc.Input(id="trips", type="number", min=200, max=4000, step=100, value=1500),
         dbc.Row(
             [
-                dbc.Col([html.Label("Sample start", className="fw-bold mt-3"), dbc.Input(id="sample-start", type="number", min=0, value=900)]),
-                dbc.Col([html.Label("Sample stop", className="fw-bold mt-3"), dbc.Input(id="sample-stop", type="number", min=1, value=1100)]),
+                dbc.Col([html.Label("Sample start", className="fw-bold mt-3"), dbc.Input(id="sample-start", type="number", min=0, value=1000)]),
+                dbc.Col([html.Label("Sample stop", className="fw-bold mt-3"), dbc.Input(id="sample-stop", type="number", min=1, value=1499)]),
             ]
         ),
-        html.Label("Return-map bus", className="fw-bold mt-3"),
-        dbc.Input(id="return-bus", type="number", min=1, max=10, step=1, value=1),
+        html.P("Long-run trip window used after the transient.", style={"fontSize": "12px", "color": "#7f8c8d", "margin": "2px 0 0"}),
         html.Hr(),
         html.Label("Sweep gamma max", className="fw-bold"),
-        dbc.Input(id="gamma-stop", type="number", min=0.1, max=2.0, step=0.1, value=0.8),
+        dbc.Input(id="gamma-stop", type="number", min=0.1, max=2.0, step=0.1, value=2.0),
         html.Label("Sweep samples", className="fw-bold mt-3"),
-        dbc.Input(id="gamma-count", type="number", min=5, max=201, step=1, value=41),
+        dbc.Input(id="gamma-count", type="number", min=5, max=501, step=1, value=301),
+        html.P("Number of Gamma points in the sweep plots.", style={"fontSize": "12px", "color": "#7f8c8d", "margin": "2px 0 0"}),
         dbc.Button("Run Multi-Bus Simulation", id="run-button", color="primary", className="w-100 mt-4"),
-        html.Div("The sweep can take a few seconds for large N.", className="text-muted small text-center mt-2"),
     ],
     className="p-3 bg-light border-end",
     style={"minHeight": "100vh"},
@@ -347,6 +546,7 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], title="Multi
 
 app.layout = dbc.Container(
     [
+        dcc.Store(id="analysis-store"),
         dbc.Row(
             [
                 dbc.Col(sidebar, width=3, className="p-0"),
@@ -355,10 +555,6 @@ app.layout = dbc.Container(
                         html.Div(
                             [
                                 html.H2("N-Bus Two-Station Shuttle Dashboard", className="mb-1"),
-                                html.Div(
-                                    "Generalized demo for N buses using the same event-driven shuttle map.",
-                                    className="text-muted",
-                                ),
                             ],
                             className="p-4 pb-2",
                         ),
@@ -372,12 +568,70 @@ app.layout = dbc.Container(
                             ],
                             className="px-4 g-3",
                         ),
+                        html.Div(
+                            [
+                                html.Span("Show buses:", className="fw-bold me-2"),
+                                dbc.Checklist(
+                                    id="bus-selector",
+                                    options=[],
+                                    value=[],
+                                    inline=True,
+                                    className="btn-group flex-wrap",
+                                    inputClassName="btn-check",
+                                    labelClassName="btn btn-outline-primary btn-sm",
+                                    labelCheckedClassName="active",
+                                ),
+                            ],
+                            className="px-4 pt-3",
+                        ),
                         dcc.Loading(
                             type="default",
                             children=dbc.Tabs(
                                 [
                                     dbc.Tab(
-                                        label="Summary",
+                                        label="Headway & Tour Times",
+                                        children=[
+                                            dbc.Row(
+                                                [
+                                                    dbc.Col(dcc.Graph(id="fig-bif-headway"), width=6),
+                                                    dbc.Col(dcc.Graph(id="fig-bif-tour"), width=6),
+                                                ],
+                                            ),
+                                        ],
+                                        className="p-4",
+                                    ),
+                                    dbc.Tab(
+                                        label="Return Map",
+                                        children=[
+                                            dbc.Row(
+                                                [
+                                                    dbc.Col(dcc.Graph(id="fig-return", style={"height": "650px"}), width={"size": 8, "offset": 2}),
+                                                ]
+                                            )
+                                        ],
+                                        className="p-4",
+                                    ),
+                                    dbc.Tab(
+                                        label="Mean & RMS",
+                                        children=[
+                                            dbc.Row(
+                                                [
+                                                    dbc.Col(dcc.Graph(id="fig-sweep-mean"), width=6),
+                                                    dbc.Col(dcc.Graph(id="fig-sweep-rms"), width=6),
+                                                ]
+                                            )
+                                        ],
+                                        className="p-4",
+                                    ),
+                                    dbc.Tab(
+                                        label="Route Animation",
+                                        children=[
+                                            dcc.Graph(id="fig-route", style={"height": "680px"}),
+                                        ],
+                                        className="p-4",
+                                    ),
+                                    dbc.Tab(
+                                        label="Bus Summary",
                                         children=[
                                             dash_table.DataTable(
                                                 id="summary-table",
@@ -398,43 +652,7 @@ app.layout = dbc.Container(
                                                 style_cell={"fontFamily": "Arial", "fontSize": 13, "padding": "6px"},
                                                 style_header={"fontWeight": "bold", "backgroundColor": "#ecf0f1"},
                                             ),
-                                            dbc.Row(
-                                                [
-                                                    dbc.Col(dcc.Graph(id="fig-headway"), width=6),
-                                                    dbc.Col(dcc.Graph(id="fig-tour"), width=6),
-                                                ],
-                                                className="mt-3",
-                                            ),
                                         ],
-                                        className="p-4",
-                                    ),
-                                    dbc.Tab(
-                                        label="Return Map & Events",
-                                        children=[
-                                            dbc.Row(
-                                                [
-                                                    dbc.Col(dcc.Graph(id="fig-return"), width=6),
-                                                    dbc.Col(dcc.Graph(id="fig-events"), width=6),
-                                                ]
-                                            )
-                                        ],
-                                        className="p-4",
-                                    ),
-                                    dbc.Tab(
-                                        label="Gamma Sweep",
-                                        children=[
-                                            dbc.Row(
-                                                [
-                                                    dbc.Col(dcc.Graph(id="fig-sweep-mean"), width=6),
-                                                    dbc.Col(dcc.Graph(id="fig-sweep-rms"), width=6),
-                                                ]
-                                            )
-                                        ],
-                                        className="p-4",
-                                    ),
-                                    dbc.Tab(
-                                        label="Route Snapshot",
-                                        children=[dcc.Graph(id="fig-route", style={"height": "650px"})],
                                         className="p-4",
                                     ),
                                 ],
@@ -456,6 +674,7 @@ app.layout = dbc.Container(
 
 @app.callback(
     [
+        Output("analysis-store", "data"),
         Output("status-alert", "children"),
         Output("status-alert", "color"),
         Output("kpi-state", "children"),
@@ -463,12 +682,8 @@ app.layout = dbc.Container(
         Output("kpi-gamma", "children"),
         Output("kpi-rms", "children"),
         Output("summary-table", "data"),
-        Output("fig-headway", "figure"),
-        Output("fig-tour", "figure"),
-        Output("fig-return", "figure"),
-        Output("fig-events", "figure"),
-        Output("fig-sweep-mean", "figure"),
-        Output("fig-sweep-rms", "figure"),
+        Output("bus-selector", "options"),
+        Output("bus-selector", "value"),
         Output("fig-route", "figure"),
     ],
     [Input("run-button", "n_clicks")],
@@ -480,12 +695,11 @@ app.layout = dbc.Container(
         State("trips", "value"),
         State("sample-start", "value"),
         State("sample-stop", "value"),
-        State("return-bus", "value"),
         State("gamma-stop", "value"),
         State("gamma-count", "value"),
     ],
 )
-def update_dashboard(
+def run_analysis(
     _n_clicks,
     bus_count,
     raw_speeds,
@@ -494,7 +708,6 @@ def update_dashboard(
     trips,
     sample_start,
     sample_stop,
-    return_bus,
     gamma_stop,
     gamma_count,
 ):
@@ -503,28 +716,23 @@ def update_dashboard(
         trips = int(trips)
         sample_start = int(sample_start)
         sample_stop = int(sample_stop)
-        return_bus = int(return_bus)
         gamma_count = int(gamma_count)
         gamma = float(gamma)
         gamma_stop = float(gamma_stop)
         speeds = parse_speeds(raw_speeds, bus_count, equal_speed)
-        if sample_stop >= trips:
-            raise ValueError("sample stop must be smaller than trips")
         if sample_start > sample_stop:
             raise ValueError("sample start must be <= sample stop")
+        if sample_stop >= trips:
+            trips = sample_stop + 1
         starts = default_initial_times(bus_count)
 
         result = simulate(gamma, speeds, trips=trips, initial_times=starts)
         rows = build_summary(result, speeds, sample_start, sample_stop)
         state, color = system_state(rows, result.diverged)
         max_rms = max(float(row["rms_h"]) for row in rows if row["rms_h"] != "nan")
+        fig_route = route_animation_figure(result)
 
-        fig_headway = time_series_figure(result, sample_start, sample_stop, "headway")
-        fig_tour = time_series_figure(result, sample_start, sample_stop, "tour")
-        fig_return = return_map_figure(result, return_bus, sample_start, sample_stop)
-        fig_events = event_order_figure(result)
-        fig_route = route_snapshot_figure(result, sample_stop)
-        fig_sweep_mean, fig_sweep_rms = sweep_figures(
+        sweep_data = build_sweep_data(
             speeds=speeds,
             trips=trips,
             sample_start=sample_start,
@@ -532,12 +740,18 @@ def update_dashboard(
             gamma_stop=gamma_stop,
             gamma_count=gamma_count,
         )
+        payload = {
+            "result": pack_result(result),
+            "sweep": sweep_data,
+            "sample_start": sample_start,
+            "sample_stop": sample_stop,
+        }
 
-        status = (
-            f"Ran N={bus_count} buses with speeds {speeds}. "
-            f"Initial times are evenly staggered over one base tour: {starts}."
-        )
+        options = bus_options(bus_count)
+        selected = [1] if options else []
+        status = f"Ran N={bus_count}, Gamma={gamma:.3f}, sweep Gamma=[0, {gamma_stop:.3f}] with {gamma_count} samples."
         return (
+            payload,
             status,
             color,
             state,
@@ -545,17 +759,14 @@ def update_dashboard(
             f"{gamma:.3f}",
             f"{max_rms:.4f}",
             rows,
-            fig_headway,
-            fig_tour,
-            fig_return,
-            fig_events,
-            fig_sweep_mean,
-            fig_sweep_rms,
+            options,
+            selected,
             fig_route,
         )
     except Exception as exc:  # Dash should show validation errors in the UI.
         message = f"Input error: {exc}"
         return (
+            None,
             message,
             "danger",
             "Invalid",
@@ -563,14 +774,49 @@ def update_dashboard(
             "-",
             "-",
             [],
-            empty_figure("Headway samples"),
-            empty_figure("Tour-time samples"),
-            empty_figure("Return map"),
-            empty_figure("Arrival events"),
-            empty_figure("Gamma sweep: mean headway"),
-            empty_figure("Gamma sweep: RMS headway"),
-            empty_figure("Route snapshot"),
+            [],
+            [],
+            empty_figure("Route animation"),
         )
+
+
+@app.callback(
+    [
+        Output("fig-return", "figure"),
+        Output("fig-sweep-mean", "figure"),
+        Output("fig-sweep-rms", "figure"),
+        Output("fig-bif-headway", "figure"),
+        Output("fig-bif-tour", "figure"),
+    ],
+    [
+        Input("analysis-store", "data"),
+        Input("bus-selector", "value"),
+    ],
+)
+def render_selected_bus_graphs(payload, selected_buses):
+    if not payload:
+        return (
+            empty_figure("Return map"),
+            empty_figure("Gamma sweep: mean values"),
+            empty_figure("Gamma sweep: RMS variations"),
+            empty_figure("Bifurcation scatter: headway samples"),
+            empty_figure("Bifurcation scatter: tour-time samples"),
+        )
+
+    result = unpack_result(payload["result"])
+    sample_start = int(payload["sample_start"])
+    sample_stop = int(payload["sample_stop"])
+
+    fig_return = return_map_figure(result, selected_buses, sample_start, sample_stop)
+    fig_sweep_mean, fig_sweep_rms = sweep_figures(payload["sweep"], selected_buses)
+    fig_bif_headway, fig_bif_tour = bifurcation_figures(payload["sweep"], selected_buses)
+    return (
+        fig_return,
+        fig_sweep_mean,
+        fig_sweep_rms,
+        fig_bif_headway,
+        fig_bif_tour,
+    )
 
 
 if __name__ == "__main__":
