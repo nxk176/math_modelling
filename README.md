@@ -316,6 +316,20 @@ The multi-bus dashboard lets the user set the main simulation parameters:
 - `Sweep samples`: the number of Gamma values sampled in the sweep. Larger
   values give denser scatter plots but take longer to run.
 
+The multi-bus dashboard defaults are aligned with the extension figures used
+in the report:
+
+```text
+Trips per bus    = 1500
+Sample start     = 1000
+Sample stop      = 1499
+Sweep gamma max  = 2.0
+Sweep samples    = 301
+```
+
+The CLI keeps a lighter default of `--gamma-count 101` for faster command-line
+runs. Use `--gamma-count 301` when regenerating the denser report-style sweep.
+
 After one run, the bus selector buttons can be used to show or hide Bus 1,
 Bus 2, and so on. The dashboard does not re-run the simulation when these
 buttons are clicked; it only redraws the graphs from the stored analysis data.
