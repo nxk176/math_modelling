@@ -145,7 +145,7 @@ content = html.Div(
                 ], className="p-3 border border-top-0 bg-white"),
 
                 dbc.Tab(label="4. Phase Diagram", tab_id="tab-4", children=[
-                    html.P("Phase boundary diagram. Note the Gold Star: If it falls BELOW/RIGHT of the red curve, the system enters the Chaotic state.", className="mt-3 text-center text-danger font-weight-bold"),
+                    html.P("Fig. 8 numerical scan: the paper does not publish the exact transition-point extraction procedure, so this view is a diagnostic reference rather than a point-by-point reproduction.", className="mt-3 text-center text-muted"),
                     dbc.Row([dbc.Col(dcc.Graph(id='fig5-phase', style={'height': '650px'}), width={'size': 10, 'offset': 1})])
                 ], className="p-3 border border-top-0 bg-white"),
 
@@ -454,7 +454,25 @@ def update_dashboard(n_clicks, selected_buses, s1, s2, target_gamma, p1_x, p1_y,
     
     fig5.add_trace(go.Scatter(x=[target_gamma], y=[s1], mode='markers', marker=dict(size=16, symbol='star', color='#f1c40f', line=dict(width=2, color='black')), name="Current Configuration"))
         
-    fig5.update_layout(template=layout_temp, title="Phase Diagram", margin=dict(l=40, r=40, t=50, b=40), xaxis=dict(range=[0.0, 2.5]), yaxis=dict(range=[0.0, 2.5]), legend=dict(x=0.01, y=0.99))
+    fig5.update_layout(
+        template=layout_temp,
+        title="Phase Diagram",
+        margin=dict(l=40, r=40, t=50, b=40),
+        xaxis=dict(range=[0.0, 2.5], title="Loading parameter Gamma"),
+        yaxis=dict(range=[0.0, 2.5], title="Speedup parameter S"),
+        legend=dict(x=0.01, y=0.99),
+        annotations=[
+            dict(
+                text="Numerical scan; paper does not specify the transition-point extraction rule.",
+                x=0.5,
+                y=-0.16,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=11, color="#7f8c8d"),
+            )
+        ],
+    )
 
     fig6_anim = build_animation_figure(diverged_status, target_gamma, s1, s2)
 
