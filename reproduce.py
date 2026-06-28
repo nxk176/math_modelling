@@ -15,8 +15,7 @@ import sys
 
 from shuttle_bus import (
     classify_motion,
-    equal_speed_transition_formula,
-    estimate_equal_speed_transition,
+    estimate_equal_speed_required_speed,
     gamma_values,
     inclusive_window,
     mean,
@@ -244,28 +243,26 @@ def mean_and_rms(out_data: Path, out_fig: Path, gammas: tuple[float, ...]) -> No
 
 
 def phase_diagram(out_data: Path, out_fig: Path) -> None:
-    speeds = tuple(i / 20 for i in range(0, 31))  # 0.00 ... 1.50
+    phase_gammas = tuple(i / 40 for i in range(1, 81))  # 0.025 ... 2.000
     rows = []
     sim_points = []
-    formula_points = []
-    for speed in speeds:
-        formula = equal_speed_transition_formula(speed)
-        transition = estimate_equal_speed_transition(speed)
-        rows.append((f"{speed:.10g}", f"{transition:.12g}", f"{formula:.12g}"))
-        if transition == transition:
-            sim_points.append((transition, speed))
-        formula_points.append((formula, speed))
-    write_csv(out_data / "fig8_phase_transition_equal_speedup.csv", ("S_equal", "gamma_transition_sim", "gamma_transition_formula"), rows)
+    for gamma in phase_gammas:
+        transition_speed = estimate_equal_speed_required_speed(gamma)
+        rows.append((f"{gamma:.10g}", f"{transition_speed:.12g}"))
+        if transition_speed == transition_speed:
+            sim_points.append((gamma, transition_speed))
+    write_csv(out_data / "fig8_phase_transition_equal_speedup.csv", ("gamma", "S_transition_sim"), rows)
     panel = Panel(
         "S1 = S2",
         "Loading parameter Gamma",
         "Speedup parameter S",
         (
-            Series("simulation", tuple(sim_points), "#000000", "points", radius=2.8),
-            Series("Gamma=S/(1+S)", tuple(formula_points), "#d62728", "line", stroke_width=2.0),
+            Series("simulation transition points", tuple(sim_points), "#000000", "points", radius=2.8, marker="circle"),
         ),
-        xlim=(0, 0.8),
-        ylim=(0, 1.5),
+        xlim=(0, 2.5),
+        ylim=(0, 2.5),
+        xticks=(0.0, 1.0, 2.0),
+        yticks=(0.0, 1.0, 2.0),
     )
     save_svg_grid(out_fig / "fig8_phase_diagram.svg", (panel,), columns=1, width=900, panel_height=610, title="Fig. 8 reproduction: regular / periodic-chaotic transition")
 

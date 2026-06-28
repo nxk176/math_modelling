@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from shuttle_bus import (
-    equal_speed_transition_formula,
     estimate_equal_speed_transition,
+    estimate_equal_speed_required_speed,
     inclusive_window,
     rms_variation,
     simulate,
@@ -17,17 +17,16 @@ def assert_close(value: float, expected: float, tolerance: float, label: str) ->
 
 
 def main() -> int:
-    # The phase-transition formula gives 0.2 / 1.2 = 1/6, matching the paper's
-    # reported first transition at Gamma ~= 0.167 for S=0.2.
-    assert_close(equal_speed_transition_formula(0.2), 1.0 / 6.0, 1.0e-12, "formula transition S=0.2")
-
+    # The paper reports the first transition near Gamma ~= 0.167 for the
+    # equal-speed case S1=S2=0.2 in the headway bifurcation plots.
     estimated = estimate_equal_speed_transition(0.2, iterations=26)
-    assert_close(estimated, 1.0 / 6.0, 2.0e-4, "simulated transition S=0.2")
+    assert_close(estimated, 1.0 / 6.0, 2.0e-4, "simulated first transition S=0.2")
 
-    # Regression check for Fig. 8: the transition estimator must find the first
-    # loss of regularity, not a later regular window at larger Gamma.
-    estimated_high_speed = estimate_equal_speed_transition(1.2, iterations=26)
-    assert_close(estimated_high_speed, 1.2 / 2.2, 2.0e-4, "simulated transition S=1.2")
+    # Fig. 8 is generated from a numerical scan because the paper does not give
+    # a closed-form transition curve or the exact classification tolerance.
+    required_speed = estimate_equal_speed_required_speed(0.2)
+    if not (0.0 <= required_speed <= 2.5):
+        raise AssertionError("Fig. 8 speed scan should find a finite transition candidate for Gamma=0.2")
 
     regular = simulate(0.1, (0.5, 0.2), trips=1001)
     regular_sample = inclusive_window(regular.headways[0], 900, 1000)

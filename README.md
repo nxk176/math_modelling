@@ -100,8 +100,10 @@ model. They are not raw data extracted from the original paper.
 
 Runs quick checks on the numerical implementation. It verifies that:
 
-- the equal-speed transition formula gives the expected value for `S=0.2`;
-- the simulated transition is close to the expected transition value;
+- the simulated first transition is close to the paper-reported value for
+  `S1=S2=0.2`;
+- the Fig. 8 numerical speed scan returns a finite transition candidate for a
+  representative loading value;
 - a low-loading case stays regular;
 - a higher-loading case shows fluctuation;
 - a no-speedup case diverges when `Gamma > 2`.
@@ -117,7 +119,7 @@ Runs the full static experiment pipeline. It regenerates:
 - tour-time data and figures;
 - return-map data and figures;
 - mean/RMS data and figures;
-- equal-speed phase-transition data and figure.
+- equal-speed phase-transition scan data and figure.
 
 The script overwrites the generated files in `outputs/`. The simulation is
 deterministic, so rerunning the same source code with the same parameters

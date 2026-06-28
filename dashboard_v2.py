@@ -9,14 +9,20 @@ import heapq
 import shuttle_bus
 
 # ----- Pre-processing Phase Diagram Data -----
-PHASE_S = tuple(i / 20 for i in range(0, 31))  
-PHASE_G_FORMULA = tuple(shuttle_bus.equal_speed_transition_formula(s) for s in PHASE_S)
+PHASE_G_GRID = tuple(i / 40 for i in range(1, 81))
 try:
     with open('outputs/data/fig8_phase_transition_equal_speedup.csv', 'r') as f:
         reader = csv.DictReader(f)
-        PHASE_G_SIM = [float(row['gamma_transition_sim']) if row['gamma_transition_sim'] != 'nan' else None for row in reader]
+        phase_rows = list(reader)
+        PHASE_G_SIM = [float(row['gamma']) for row in phase_rows if row.get('S_transition_sim') not in (None, 'nan')]
+        PHASE_S_SIM = [float(row['S_transition_sim']) for row in phase_rows if row.get('S_transition_sim') not in (None, 'nan')]
 except Exception:
-    PHASE_G_SIM = tuple(shuttle_bus.estimate_equal_speed_transition(s) for s in PHASE_S)
+    fallback_points = tuple(
+        (gamma, shuttle_bus.estimate_equal_speed_required_speed(gamma))
+        for gamma in PHASE_G_GRID
+    )
+    PHASE_G_SIM = tuple(gamma for gamma, speed in fallback_points if speed == speed)
+    PHASE_S_SIM = tuple(speed for _, speed in fallback_points if speed == speed)
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], title="Shuttle Bus Chaos Dashboard")
 
@@ -444,17 +450,11 @@ def update_dashboard(n_clicks, selected_buses, s1, s2, target_gamma, p1_x, p1_y,
     fig4_rms.update_layout(template=layout_temp, title="RMS Variation", xaxis=dict(range=p3_x), yaxis=dict(range=p3_y))
 
     fig5 = go.Figure()
-    sim_points_x = [g for g in PHASE_G_SIM if g is not None]
-    sim_points_y = [s for g, s in zip(PHASE_G_SIM, PHASE_S) if g is not None]
-    fig5.add_trace(go.Scatter(x=sim_points_x, y=sim_points_y, mode='markers', marker=dict(color='#2c3e50', size=6), name="Simulation"))
-    
-    s_smooth = [i/100 for i in range(151)]
-    g_smooth = [shuttle_bus.equal_speed_transition_formula(s) for s in s_smooth]
-    fig5.add_trace(go.Scatter(x=g_smooth, y=s_smooth, mode='lines', name="Theory: Gamma=S/(1+S)", line=dict(color='#e74c3c', width=2)))
+    fig5.add_trace(go.Scatter(x=PHASE_G_SIM, y=PHASE_S_SIM, mode='markers', marker=dict(color='#2c3e50', size=6), name="Numerical transition scan"))
     
     fig5.add_trace(go.Scatter(x=[target_gamma], y=[s1], mode='markers', marker=dict(size=16, symbol='star', color='#f1c40f', line=dict(width=2, color='black')), name="Current Configuration"))
         
-    fig5.update_layout(template=layout_temp, title="Phase Diagram", margin=dict(l=40, r=40, t=50, b=40), xaxis=dict(range=[0.0, 2.0]), yaxis=dict(range=[0.0, 1.5]), legend=dict(x=0.01, y=0.99))
+    fig5.update_layout(template=layout_temp, title="Phase Diagram", margin=dict(l=40, r=40, t=50, b=40), xaxis=dict(range=[0.0, 2.5]), yaxis=dict(range=[0.0, 2.5]), legend=dict(x=0.01, y=0.99))
 
     fig6_anim = build_animation_figure(diverged_status, target_gamma, s1, s2)
 

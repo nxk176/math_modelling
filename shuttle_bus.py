@@ -231,7 +231,11 @@ def estimate_equal_speed_transition(
     sample_stop: int = 1000,
     regular_tol: float = 2.0e-3,
 ) -> float:
-    """Estimate the first Gamma where equal-speed buses stop being regular."""
+    """Estimate the first Gamma where equal-speed buses stop being regular.
+
+    This helper is a numerical diagnostic for the equal-speed case.  It is not
+    an analytic phase-boundary formula for Fig. 8.
+    """
 
     if scan_steps < 1:
         raise ValueError("scan_steps must be at least 1")
@@ -270,11 +274,59 @@ def estimate_equal_speed_transition(
     return hi
 
 
-def equal_speed_transition_formula(speed: float) -> float:
-    """Analytic transition curve reported by the simulation pattern.
+def equal_speed_is_regular(
+    gamma: float,
+    speed: float,
+    *,
+    trips: int = 1300,
+    sample_start: int = 900,
+    sample_stop: int = 1000,
+    regular_tol: float = 2.0e-3,
+) -> bool:
+    """Return whether the equal-speed case is regular in the sample window."""
 
-    The paper's Fig. 8 transition points are reproduced by Gamma = S/(1+S),
-    which also gives Gamma=0.167 at S=0.2.
+    result = simulate(gamma, (speed, speed), trips=trips)
+    if result.diverged:
+        return False
+    sample = inclusive_window(result.headways[0], sample_start, sample_stop)
+    return rms_variation(sample) <= regular_tol
+
+
+def estimate_equal_speed_required_speed(
+    gamma: float,
+    *,
+    speed_low: float = 0.0,
+    speed_high: float = 2.5,
+    scan_steps: int = 250,
+    trips: int = 1300,
+    sample_start: int = 900,
+    sample_stop: int = 1000,
+    regular_tol: float = 2.0e-3,
+) -> float:
+    """Estimate the smallest tested equal speedup that gives regular motion.
+
+    Fig. 8 in the paper reports transition points obtained from simulation, but
+    it does not publish the exact classifier, tolerance, or initial conditions.
+    This function therefore performs a transparent numerical scan of ``S`` for a
+    fixed ``Gamma`` and returns ``nan`` if no regular point is found in the
+    scanned interval.
     """
 
-    return speed / (1.0 + speed)
+    if scan_steps < 1:
+        raise ValueError("scan_steps must be at least 1")
+    if speed_high < speed_low:
+        raise ValueError("speed_high must be greater than or equal to speed_low")
+
+    step = (speed_high - speed_low) / scan_steps
+    for idx in range(scan_steps + 1):
+        speed = speed_low + idx * step
+        if equal_speed_is_regular(
+            gamma,
+            speed,
+            trips=trips,
+            sample_start=sample_start,
+            sample_stop=sample_stop,
+            regular_tol=regular_tol,
+        ):
+            return speed
+    return math.nan
